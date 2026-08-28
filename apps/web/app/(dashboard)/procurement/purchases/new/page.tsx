@@ -13,10 +13,15 @@ import {
   MaterialFamily,
   CreateMaterialFamilyRequest,
 } from '../../../../../features/material-families/api/material-families';
+import {
+  priceCategoriesApi,
+  PriceCategory,
+} from '../../../../../features/price-categories/api/price-categories';
 import { formatPaisa, parseRupeeInput, parseWeightInput } from '../../../../../features/shared/utils/format';
 
 interface CoilFormState {
   materialFamilyId: number | '';
+  priceCategoryId: number | '';
   brand: string;
   color: string;
   batchNumber: string;
@@ -31,6 +36,7 @@ interface CoilFormState {
 
 const emptyCoilForm = (): CoilFormState => ({
   materialFamilyId: '',
+  priceCategoryId: '',
   brand: '',
   color: '',
   batchNumber: '',
@@ -159,6 +165,56 @@ function CategoryComboBox({
   );
 }
 
+function PriceCategorySelect({
+  categories,
+  value,
+  onChange,
+  isLoading,
+}: {
+  categories: PriceCategory[];
+  value: number | '';
+  onChange: (id: number | '') => void;
+  isLoading: boolean;
+}) {
+  const selected = categories.find((c) => c.id === value);
+
+  if (isLoading) {
+    return (
+      <div className="w-full bg-[#141A22] border border-zinc-700 rounded-lg px-3 py-2 text-zinc-500 text-sm">
+        Loading price categories...
+      </div>
+    );
+  }
+
+  return (
+    <div>
+      <select
+        value={value}
+        onChange={(e) =>
+          onChange(e.target.value ? parseInt(e.target.value, 10) : '')
+        }
+        className="w-full bg-[#141A22] border border-zinc-700 rounded-lg px-3 py-2 text-zinc-100 text-sm focus:outline-none focus:ring-2 focus:ring-zinc-600"
+      >
+        <option value="">Unassigned</option>
+        {categories.map((c) => (
+          <option key={c.id} value={c.id}>
+            {c.name} — Rs{' '}
+            {(Number(c.sellingRatePaisa) / 100).toFixed(2)}/KG
+          </option>
+        ))}
+      </select>
+      {selected && (
+        <p className="text-xs text-zinc-400 mt-1.5">
+          <span className="text-zinc-500">Default Selling Rate:</span>{' '}
+          <span className="text-zinc-200 font-medium">
+            Rs {(Number(selected.sellingRatePaisa) / 100).toFixed(2)} / KG
+          </span>
+        </p>
+      )}
+    </div>
+  );
+}
+
 function AddCategoryModal({
   isOpen,
   onClose,
@@ -275,8 +331,11 @@ export default function NewPurchasePage() {
   const router = useRouter();
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [materialFamilies, setMaterialFamilies] = useState<MaterialFamily[]>([]);
+  const [priceCategories, setPriceCategories] = useState<PriceCategory[]>([]);
   const [isLoadingSuppliers, setIsLoadingSuppliers] = useState(true);
   const [isLoadingFamilies, setIsLoadingFamilies] = useState(true);
+  const [isLoadingPriceCategories, setIsLoadingPriceCategories] =
+    useState(true);
   const [supplierId, setSupplierId] = useState<number | ''>('');
   const [supplierInvoiceNumber, setSupplierInvoiceNumber] = useState('');
   const [purchaseDate, setPurchaseDate] = useState(
@@ -326,8 +385,26 @@ export default function NewPurchasePage() {
       }
     }
 
+    async function loadPriceCategories() {
+      try {
+        const data = await priceCategoriesApi.findActive();
+        if (!isCancelled) {
+          setPriceCategories(data);
+        }
+      } catch {
+        if (!isCancelled) {
+          setError('Failed to load price categories');
+        }
+      } finally {
+        if (!isCancelled) {
+          setIsLoadingPriceCategories(false);
+        }
+      }
+    }
+
     loadSuppliers();
     loadMaterialFamilies();
+    loadPriceCategories();
 
     return () => {
       isCancelled = true;
@@ -392,6 +469,7 @@ export default function NewPurchasePage() {
         .filter((coil) => coil.purchaseWeight && coil.purchaseRate)
         .map((coil) => ({
           materialFamilyId: coil.materialFamilyId !== '' ? (coil.materialFamilyId as number) : undefined,
+          priceCategoryId: coil.priceCategoryId !== '' ? (coil.priceCategoryId as number) : undefined,
           brand: coil.brand || undefined,
           color: coil.color || undefined,
           batchNumber: coil.batchNumber || undefined,
@@ -427,7 +505,7 @@ export default function NewPurchasePage() {
     }
   };
 
-  if (isLoadingSuppliers || isLoadingFamilies) {
+  if (isLoadingSuppliers || isLoadingFamilies || isLoadingPriceCategories) {
     return (
       <div className="flex items-center justify-center h-full">
         <div className="text-zinc-500 text-sm">Loading...</div>
@@ -553,17 +631,32 @@ export default function NewPurchasePage() {
                 </div>
 
                 <div className="space-y-4">
-                  <div>
-                    <label className="block text-xs font-medium text-zinc-500 mb-1.5 uppercase tracking-wide">
-                      Material
-                    </label>
-                    <CategoryComboBox
-                      families={materialFamilies}
-                      value={coil.materialFamilyId}
-                      onChange={(id) => updateCoil(index, 'materialFamilyId', id)}
-                      onAddNew={() => handleAddCategory(index)}
-                      isLoading={isLoadingFamilies}
-                    />
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-xs font-medium text-zinc-500 mb-1.5 uppercase tracking-wide">
+                        Material
+                      </label>
+                      <CategoryComboBox
+                        families={materialFamilies}
+                        value={coil.materialFamilyId}
+                        onChange={(id) => updateCoil(index, 'materialFamilyId', id)}
+                        onAddNew={() => handleAddCategory(index)}
+                        isLoading={isLoadingFamilies}
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-zinc-500 mb-1.5 uppercase tracking-wide">
+                        Price Category
+                      </label>
+                      <PriceCategorySelect
+                        categories={priceCategories}
+                        value={coil.priceCategoryId}
+                        onChange={(id) => {
+                          updateCoil(index, 'priceCategoryId', id);
+                        }}
+                        isLoading={isLoadingPriceCategories}
+                      />
+                    </div>
                   </div>
 
                   <div className="grid grid-cols-4 gap-4">
@@ -783,21 +876,45 @@ export default function NewPurchasePage() {
           </div>
         </div>
 
-        <div className="flex justify-end gap-3">
-          <button
-            type="button"
-            onClick={() => router.back()}
-            className="text-zinc-400 hover:text-zinc-200 text-sm font-medium px-4 py-2.5 rounded-lg hover:bg-zinc-800 transition-colors"
-          >
-            Cancel
-          </button>
-          <button
-            type="submit"
-            disabled={isSubmitting || !supplierId || coils.length === 0}
-            className="bg-zinc-700 hover:bg-zinc-600 disabled:bg-zinc-800 disabled:text-zinc-500 text-zinc-100 text-sm font-medium px-4 py-2.5 rounded-lg transition-colors"
-          >
-            {isSubmitting ? 'Creating...' : 'Save Purchase'}
-          </button>
+        <div className="flex flex-col items-end gap-2">
+          {(() => {
+            const reasons: string[] = [];
+            if (coils.length === 0) reasons.push('Add at least one coil.');
+            if (!supplierId) reasons.push('Select a supplier.');
+            const hasInvalidCoil = !coils.some(
+              (c) =>
+                parseWeightInput(c.purchaseWeight) > 0 &&
+                parseRupeeInput(c.purchaseRate) > 0,
+            );
+            if (coils.length > 0 && hasInvalidCoil)
+              reasons.push(
+                'Each coil needs purchase weight and rate greater than zero.',
+              );
+            if (!reasons.length && !coils.some((c) => parseWeightInput(c.width) > 0))
+              reasons.push('Each coil needs a width.');
+            return reasons.length > 0 ? (
+              <p className="text-xs text-zinc-500">
+                To save: {reasons.join(' ')}
+              </p>
+            ) : null;
+          })()}
+
+          <div className="flex justify-end gap-3">
+            <button
+              type="button"
+              onClick={() => router.back()}
+              className="text-zinc-400 hover:text-zinc-200 text-sm font-medium px-4 py-2.5 rounded-lg hover:bg-zinc-800 transition-colors"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={isSubmitting}
+              className="bg-zinc-100 hover:bg-zinc-200 disabled:bg-zinc-700 disabled:text-zinc-500 text-zinc-900 text-sm font-medium px-4 py-2.5 rounded-lg transition-colors flex items-center gap-2"
+            >
+              {isSubmitting ? 'Creating...' : 'Save Purchase'}
+            </button>
+          </div>
         </div>
       </form>
 

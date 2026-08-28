@@ -62,6 +62,11 @@ export class CreateCoilDto {
   @IsString()
   @IsOptional()
   notes?: string;
+
+  @IsInt()
+  @IsOptional()
+  @Min(1)
+  priceCategoryId?: number;
 }
 
 export class CreatePurchaseDto {

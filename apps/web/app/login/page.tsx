@@ -3,6 +3,7 @@
 import { useState, FormEvent } from 'react';
 import { useRouter } from 'next/navigation';
 import { authApi } from '../../features/auth/api/auth';
+import { useBranding } from '../../features/settings/hooks/use-branding';
 
 function CoilIcon({ className }: { className?: string }) {
   return (
@@ -42,6 +43,7 @@ function EyeOffIcon({ className }: { className?: string }) {
 
 export default function LoginPage() {
   const router = useRouter();
+  const { branding } = useBranding();
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
@@ -73,14 +75,25 @@ export default function LoginPage() {
 
       <div className="relative z-10 w-full max-w-[400px] px-6">
         <div className="flex justify-center mb-8 -mt-12">
-          <div className="w-16 h-16 rounded-2xl bg-[#11161D] border border-[#252C35] flex items-center justify-center -mt-2">
-            <CoilIcon className="w-8 h-8 text-zinc-400" />
-          </div>
+          {branding.logoUrl ? (
+            <img
+              src={branding.logoUrl}
+              alt="Logo"
+              className="w-16 h-16 rounded-2xl object-contain"
+              onError={(e) => {
+                (e.target as HTMLImageElement).style.display = 'none';
+              }}
+            />
+          ) : (
+            <div className="w-16 h-16 rounded-2xl bg-[#11161D] border border-[#252C35] flex items-center justify-center -mt-2">
+              <CoilIcon className="w-8 h-8 text-zinc-400" />
+            </div>
+          )}
         </div>
 
         <div className="text-center mb-8">
           <h1 className="text-2xl font-semibold text-zinc-100 tracking-wide">
-            SteelCoil
+            {branding.shopName}
           </h1>
           <p className="text-zinc-500 text-sm mt-1">Inventory POS</p>
         </div>

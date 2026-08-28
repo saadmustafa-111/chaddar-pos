@@ -13,12 +13,22 @@ import { Supplier } from '../../suppliers/entities/supplier.entity';
 import { MaterialFamily } from '../../material-families/entities/material-family.entity';
 import { InventoryMovement } from '../../inventory-movements/entities/inventory-movement.entity';
 import { CoilLandingExpense } from '../../landing-expenses/entities/coil-landing-expense.entity';
+import { CuttingBatch } from '../../cutting-batches/entities/cutting-batch.entity';
+import { FinishedChaddarStock } from '../../finished-chaddar-stock/entities/finished-chaddar-stock.entity';
+import { PlaneStock } from '../../plane-stock/entities/plane-stock.entity';
+import { PriceCategory } from '../../price-categories/entities/price-category.entity';
 
 export enum InventoryStatus {
   RAW = 'RAW',
   IN_PROCESS = 'IN_PROCESS',
   FINISHED = 'FINISHED',
   DEPLETED = 'DEPLETED',
+}
+
+export enum ProcessingStatus {
+  NOT_STARTED = 'NOT_STARTED',
+  IN_PROGRESS = 'IN_PROGRESS',
+  COMPLETED = 'COMPLETED',
 }
 
 @Entity('coils')
@@ -52,6 +62,13 @@ export class Coil {
   @ManyToOne(() => MaterialFamily, (family) => family.coils, { nullable: true })
   @JoinColumn({ name: 'material_family_id' })
   materialFamily: MaterialFamily | null;
+
+  @Column({ name: 'price_category_id', nullable: true })
+  priceCategoryId: number | null;
+
+  @ManyToOne(() => PriceCategory, { nullable: true })
+  @JoinColumn({ name: 'price_category_id' })
+  priceCategory: PriceCategory | null;
 
   @Column({ type: 'varchar', length: 50, nullable: true })
   brand: string | null;
@@ -111,6 +128,29 @@ export class Coil {
   })
   status: InventoryStatus;
 
+  @Column({
+    name: 'processing_status',
+    type: 'varchar',
+    length: 20,
+    default: ProcessingStatus.NOT_STARTED,
+  })
+  processingStatus: ProcessingStatus;
+
+  @Column({ name: 'processing_date', type: 'date', nullable: true })
+  processingDate: Date | null;
+
+  @Column({ name: 'processing_note', type: 'text', nullable: true })
+  processingNote: string | null;
+
+  @Column({
+    name: 'wastage_weight',
+    type: 'decimal',
+    precision: 12,
+    scale: 3,
+    default: 0,
+  })
+  wastageWeight: number;
+
   @Column({ type: 'varchar', length: 100, nullable: true })
   location: string | null;
 
@@ -128,4 +168,13 @@ export class Coil {
 
   @OneToMany(() => CoilLandingExpense, (expense) => expense.coil)
   landingExpenses: CoilLandingExpense[];
+
+  @OneToMany(() => CuttingBatch, (batch) => batch.sourceCoil)
+  cuttingBatches: CuttingBatch[];
+
+  @OneToMany(() => FinishedChaddarStock, (stock) => stock.sourceCoil)
+  finishedStocks: FinishedChaddarStock[];
+
+  @OneToMany(() => PlaneStock, (plane) => plane.coil)
+  planeStocks: PlaneStock[];
 }

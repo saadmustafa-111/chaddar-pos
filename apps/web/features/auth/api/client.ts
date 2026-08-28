@@ -37,6 +37,12 @@ export const api = {
   post: <T>(endpoint: string, body?: unknown, credentials = false) =>
     request<T>(endpoint, { method: 'POST', body, credentials }),
 
+  put: <T>(endpoint: string, body?: unknown, credentials = false) =>
+    request<T>(endpoint, { method: 'PUT', body, credentials }),
+
+  patch: <T>(endpoint: string, body?: unknown, credentials = false) =>
+    request<T>(endpoint, { method: 'PATCH', body, credentials }),
+
   get: <T>(endpoint: string, credentials = false) =>
     request<T>(endpoint, { method: 'GET', credentials }),
 

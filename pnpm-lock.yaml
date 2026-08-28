@@ -35,6 +35,9 @@ importers:
       '@types/express-session':
         specifier: ^1.19.0
         version: 1.19.0
+      '@types/multer':
+        specifier: ^2.2.0
+        version: 2.2.0
       argon2:
         specifier: ^0.45.1
         version: 0.45.1
@@ -50,6 +53,9 @@ importers:
       express-session:
         specifier: ^1.19.0
         version: 1.19.0
+      multer:
+        specifier: ^2.2.0
+        version: 2.2.0
       reflect-metadata:
         specifier: ^0.2.2
         version: 0.2.2
@@ -1468,6 +1474,9 @@ packages:
   '@types/methods@1.1.4':
     resolution: {integrity: sha512-ymXWVrDiCxTBE3+RIrrP533E70eA+9qu7zdWoHuOmGujkYtzf4HQF96b8nwHLqhuf4ykX61IGRIB38CC6/sImQ==}
 
+  '@types/multer@2.2.0':
+    resolution: {integrity: sha512-3U1troeqGV8Ntp7Q3klwf4zr23VEoqYVocYXaswm9+8z3O9UHDYAqLxjJ/h550iRADTjKdOdhhasXw6gD6kYtg==}
+
   '@types/node@20.19.43':
     resolution: {integrity: sha512-6oYBAi5ikg4Pl+kGsoYtawUMBT2zZMCvPNF7pVLnHZfd1zf38DRiWn/gT01RYCdUqkv7Fhr+C9ot4/tb+2sVvA==}
 
@@ -2565,6 +2574,7 @@ packages:
   eslint@9.39.5:
     resolution: {integrity: sha512-DgZS62aPLXKlnxILS/AYCoRvHaZeXceIzlXPkkGGzJWSow1aEk0lbTlxUSlyjC8jcaKxAdOnTDz+o1JFSBsyjw==}
     engines: {node: ^18.18.0 || ^20.9.0 || >=21.1.0}
+    deprecated: This version is no longer supported. Please see https://eslint.org/version-support for other options.
     hasBin: true
     peerDependencies:
       jiti: '*'
@@ -6063,6 +6073,10 @@ snapshots:
       '@types/node': 24.13.3
 
   '@types/methods@1.1.4': {}
+
+  '@types/multer@2.2.0':
+    dependencies:
+      '@types/express': 5.0.6
 
   '@types/node@20.19.43':
     dependencies:

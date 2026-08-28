@@ -1,6 +1,9 @@
 export function formatPaisa(paisa: number): string {
   const rupees = Number(paisa) / 100;
-  return `Rs ${rupees.toFixed(2)}`;
+  return `Rs ${rupees.toLocaleString('en-US', {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  })}`;
 }
 
 export function parseRupeeInput(value: string): number {
@@ -42,4 +45,27 @@ export function formatDate(dateString: string): string {
     month: 'short',
     year: 'numeric',
   });
+}
+
+export function formatShortDate(dateString: string): string {
+  const date = new Date(dateString);
+  return date.toLocaleDateString('en-GB', {
+    day: '2-digit',
+    month: 'short',
+  });
+}
+
+export function formatPaisaCompact(paisa: number): string {
+  const rupees = Number(paisa) / 100;
+  const abs = Math.abs(rupees);
+  if (abs >= 1_00_00_000) {
+    return `Rs ${(rupees / 1_00_00_000).toFixed(2)} Cr`;
+  }
+  if (abs >= 1_00_000) {
+    return `Rs ${(rupees / 1_00_000).toFixed(2)} L`;
+  }
+  if (abs >= 1_000) {
+    return `Rs ${(rupees / 1_000).toFixed(1)}K`;
+  }
+  return `Rs ${rupees.toFixed(2)}`;
 }

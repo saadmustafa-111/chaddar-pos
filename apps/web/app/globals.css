@@ -34,3 +34,36 @@ body {
 ::-webkit-scrollbar-thumb:hover {
   background: #3d4a5c;
 }
+
+/* Print styles for invoices and receipts */
+@media print {
+  html,
+  body {
+    background: #ffffff !important;
+    color: #18181b !important;
+  }
+
+  body * {
+    visibility: hidden;
+  }
+
+  .print-invoice,
+  .print-invoice * {
+    visibility: visible;
+  }
+
+  .print-invoice {
+    position: absolute !important;
+    top: 0 !important;
+    left: 0 !important;
+    width: 100% !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    background: #ffffff !important;
+  }
+
+  @page {
+    size: A4;
+    margin: 12mm;
+  }
+}
