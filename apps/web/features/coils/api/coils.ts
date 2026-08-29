@@ -124,6 +124,7 @@ export interface FinishedCostSummary {
 
 export interface CuttingBatchRow {
   lengthFt: number;
+  widthInches: number;
   quantity: number;
   pieceWeightKg: number;
   totalWeightKg: number;
@@ -172,6 +173,7 @@ export interface FinishedChaddarStock {
   sourceCoilId: number;
   sizeLabel: string;
   widthMm: number | null;
+  widthInches: number | null;
   thicknessMm: number | null;
   color: string | null;
   brand: string | null;
@@ -189,6 +191,8 @@ export interface FinishedChaddarStock {
   productionDate: string;
   createdAt: string;
   updatedAt: string;
+  /** Heat number for the finished stock row. */
+  heatNumber: string | null;
 }
 
 export interface CuttingBatchWithStock {
@@ -198,6 +202,7 @@ export interface CuttingBatchWithStock {
 
 export interface CreateCuttingRowRequest {
   lengthFt: number;
+  widthInches: number;
   quantity: number;
 }
 

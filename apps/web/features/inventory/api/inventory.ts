@@ -80,6 +80,7 @@ export interface InventorySummary {
 export interface FinishedStockRow {
   id: number;
   code: string;
+  heatNumber: string | null;
   sizeLabel: string;
   thicknessMm: number | null;
   color: string | null;

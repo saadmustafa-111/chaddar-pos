@@ -243,7 +243,7 @@ export function NewSaleForm({
 
   const filteredPicker = useMemo(() => {
     const term = pickerSearch.trim().toLowerCase();
-    return availableStock.filter((s) => {
+    const matched = availableStock.filter((s) => {
       // The picker must never offer sold-out stock and must never
       // double-add a stock the operator already pulled into the cart.
       if (s.status === FinishedChaddarStatus.SOLD_OUT) return false;
@@ -258,6 +258,7 @@ export function NewSaleForm({
         s.weightPerPieceKg != null ? Number(s.weightPerPieceKg) : null;
       const fields = [
         s.code,
+        s.heatNumber ?? '',
         s.sizeLabel,
         s.color ?? '',
         s.brand ?? '',
@@ -267,6 +268,12 @@ export function NewSaleForm({
         wpp != null && wpp > 0 ? `${wpp.toFixed(2)} KG/pc` : '',
       ];
       return fields.some((field) => field.toLowerCase().includes(term));
+    });
+    if (!term) return matched;
+    return matched.sort((a, b) => {
+      const aExact = a.heatNumber?.toLowerCase() === term ? 0 : 1;
+      const bExact = b.heatNumber?.toLowerCase() === term ? 0 : 1;
+      return aExact - bExact;
     });
   }, [availableStock, inCartStockIds, pickerCategory, pickerSearch]);
 
@@ -398,8 +405,7 @@ export function NewSaleForm({
     }
 
     const payload: CreateSaleRequest = {
-      customerId:
-        cart.paymentMode === 'credit' ? cart.customerId ?? undefined : undefined,
+      customerId: cart.customerId ?? undefined,
       paidAmountPaisa: paidPaisa,
       saleDate: cart.saleDate,
       note: cart.note.trim() || undefined,
@@ -565,6 +571,28 @@ export function NewSaleForm({
         disabled={isSaving}
       />
 
+      {/* ──────────────── Customer ──────────────── */}
+      <section className="bg-[#141A22] border border-zinc-800/80 rounded-2xl overflow-hidden">
+        <div className="px-6 py-5 space-y-4">
+          <div className="text-[11px] font-semibold uppercase tracking-wider text-zinc-500">
+            Customer
+          </div>
+          <CustomerSelector
+            value={cart.customerId}
+            onChange={(id) =>
+              setCart((prev) => ({ ...prev, customerId: id }))
+            }
+            onCreateNew={() => setShowNewCustomer(true)}
+            disabled={isSaving}
+          />
+          {cart.paymentMode === 'credit' && !cart.customerId && (
+            <p className="text-xs text-amber-400">
+              Select or create a customer for a credit sale.
+            </p>
+          )}
+        </div>
+      </section>
+
       {/* ──────────────── Payment ──────────────── */}
       <section className="bg-gradient-to-b from-[#141A22] to-[#10141A] border border-zinc-800/80 rounded-2xl overflow-hidden shadow-[0_1px_0_rgba(255,255,255,0.04)_inset]">
         <header className="px-6 pt-6 pb-5 border-b border-zinc-800/70">
@@ -586,7 +614,7 @@ export function NewSaleForm({
               mode="cash"
               active={cart.paymentMode === 'cash'}
               onClick={() => handlePaymentMode('cash')}
-              hint="No customer; must be fully paid."
+              hint="Fully paid now; optional customer."
               disabled={isSaving}
             />
             <PaymentModePill
@@ -597,17 +625,6 @@ export function NewSaleForm({
               disabled={isSaving}
             />
           </div>
-
-          {cart.paymentMode === 'credit' && (
-            <CustomerSelector
-              value={cart.customerId}
-              onChange={(id) =>
-                setCart((prev) => ({ ...prev, customerId: id }))
-              }
-              onCreateNew={() => setShowNewCustomer(true)}
-              disabled={isSaving}
-            />
-          )}
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <PaymentField

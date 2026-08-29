@@ -33,6 +33,24 @@ export class CreateCuttingRowDto {
   lengthFt: number;
 
   /**
+   * Width of the coil in inches. Used for heat number generation.
+   * When not provided, the system attempts to derive from coil width.
+   */
+  @IsOptional()
+  @IsNumber({ maxDecimalPlaces: 3 })
+  @Min(0.001)
+  @Transform(({ value }: { value: unknown }) => {
+    if (value === null || value === undefined || value === '') {
+      return undefined;
+    }
+    const parsed = Number(value);
+    return isNaN(parsed) || !Number.isFinite(parsed)
+      ? (value as number)
+      : Math.round(parsed * 1000) / 1000;
+  })
+  widthInches?: number;
+
+  /**
    * Number of pieces of `lengthFt` to cut. Integer, must be > 0.
    */
   @IsInt()

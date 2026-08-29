@@ -7,6 +7,7 @@ import {
   FinishedChaddarStatus,
 } from '../finished-chaddar-stock/entities/finished-chaddar-stock.entity';
 import { PriceCategory } from '../price-categories/entities/price-category.entity';
+import { CurrentMarketRatesService } from '../current-market-rates/current-market-rates.service';
 
 export interface InventorySummary {
   rawCoils: {
@@ -17,6 +18,7 @@ export interface InventorySummary {
     totalWastageWeightKg: number;
     totalPurchaseAmountPaisa: number;
     totalRemainingCostValuePaisa: number;
+    totalReplacementValuePaisa: number;
   };
   finishedChaddar: {
     totalStockRows: number;
@@ -26,12 +28,14 @@ export interface InventorySummary {
     totalRemainingPieces: number;
     totalRemainingWeightKg: number;
     totalFinishedCostValuePaisa: number;
+    totalReplacementValuePaisa: number;
   };
 }
 
 export interface FinishedStockRow {
   id: number;
   code: string;
+  heatNumber: string | null;
   sizeLabel: string;
   thicknessMm: number | null;
   color: string | null;
@@ -46,6 +50,8 @@ export interface FinishedStockRow {
   finishedCostPerKgPaisa: number;
   totalProductionCostPaisa: number;
   remainingCostValuePaisa: number;
+  replacementCostPerKgPaisa: number;
+  replacementValuePaisa: number;
   status: FinishedChaddarStatus;
   productionDate: string;
   priceCategoryId: number | null;
@@ -82,6 +88,8 @@ export interface RawCoilRow {
   status: InventoryStatus;
   processingStatus: string;
   createdAt: string;
+  replacementCostPerKgPaisa: number;
+  replacementValuePaisa: number;
 }
 
 export interface RawCoilFilters {
@@ -100,6 +108,7 @@ export class InventoryService {
     private readonly stockRepository: Repository<FinishedChaddarStock>,
     @InjectRepository(PriceCategory)
     private readonly categoryRepository: Repository<PriceCategory>,
+    private readonly marketRatesService: CurrentMarketRatesService,
   ) {}
 
   /**
@@ -174,6 +183,10 @@ export class InventoryService {
         totalFinishedCostValuePaisa: string;
       }>();
 
+    const rawReplacementValue = await this.computeRawCoilsReplacementValue();
+    const finishedReplacementValue =
+      await this.computeFinishedStockReplacementValue();
+
     return {
       rawCoils: {
         totalCoils: Number(raw?.totalCoils ?? 0),
@@ -185,6 +198,7 @@ export class InventoryService {
         totalRemainingCostValuePaisa: Number(
           raw?.totalPurchaseAmountPaisa ?? 0,
         ),
+        totalReplacementValuePaisa: rawReplacementValue,
       },
       finishedChaddar: {
         totalStockRows: Number(finished?.totalStockRows ?? 0),
@@ -196,8 +210,85 @@ export class InventoryService {
         totalFinishedCostValuePaisa: Number(
           finished?.totalFinishedCostValuePaisa ?? 0,
         ),
+        totalReplacementValuePaisa: finishedReplacementValue,
       },
     };
+  }
+
+  private async computeRawCoilsReplacementValue(): Promise<number> {
+    type CoilRawRow = { materialFamilyId: number; currentWeight: number };
+
+    const rawCoils: any[] = await this.coilRepository
+      .createQueryBuilder('c')
+      .select('c.material_family_id', 'materialFamilyId')
+      .addSelect('c.current_weight', 'currentWeight')
+      .where('c.status <> :depleted', { depleted: InventoryStatus.DEPLETED })
+      .andWhere('c.material_family_id IS NOT NULL')
+      .getRawMany();
+
+    const coils = rawCoils as CoilRawRow[];
+
+    if (coils.length === 0) return 0;
+
+    const familyIds = [...new Set(coils.map((c) => c.materialFamilyId))];
+    const familyCosts = await Promise.all(
+      familyIds.map((id) =>
+        this.marketRatesService.getReplacementCostForFamily(id),
+      ),
+    );
+    const costByFamily: Record<number, number> = Object.fromEntries(
+      familyIds.map((id, i) => [id, familyCosts[i].replacementCostPerKgPaisa]),
+    );
+
+    let total = 0;
+    for (const coil of coils) {
+      const cost = costByFamily[coil.materialFamilyId] ?? 0;
+      total += Number(coil.currentWeight) * cost;
+    }
+    return Math.round(total);
+  }
+
+  private async computeFinishedStockReplacementValue(): Promise<number> {
+    type StockRawRow = {
+      materialFamilyId: number | null;
+      remainingWeight: number;
+    };
+
+    const rawRows: any[] = await this.stockRepository
+      .createQueryBuilder('s')
+      .select('coil.material_family_id', 'materialFamilyId')
+      .addSelect('s.remaining_weight_kg', 'remainingWeight')
+      .leftJoin('s.sourceCoil', 'coil')
+      .where('s.remaining_weight_kg > 0')
+      .getRawMany();
+
+    const rows = rawRows as StockRawRow[];
+
+    if (rows.length === 0) return 0;
+
+    const familyIds = rows
+      .map((r) => r.materialFamilyId)
+      .filter((id): id is number => id !== null && id !== undefined);
+    const uniqueFamilyIds = [...new Set(familyIds)];
+    const familyCosts = await Promise.all(
+      uniqueFamilyIds.map((id) =>
+        this.marketRatesService.getReplacementCostForFamily(id),
+      ),
+    );
+    const costByFamily: Record<number, number> = Object.fromEntries(
+      uniqueFamilyIds.map((id, i) => [
+        id,
+        familyCosts[i].replacementCostPerKgPaisa,
+      ]),
+    );
+
+    let total = 0;
+    for (const row of rows) {
+      if (!row.materialFamilyId) continue;
+      const cost = costByFamily[row.materialFamilyId] ?? 0;
+      total += Number(row.remainingWeight) * cost;
+    }
+    return Math.round(total);
   }
 
   /**
@@ -212,7 +303,7 @@ export class InventoryService {
       .createQueryBuilder('s')
       .leftJoinAndSelect('s.priceCategory', 'priceCategory')
       .leftJoin('s.sourceCoil', 'coil')
-      .addSelect(['coil.id', 'coil.code'])
+      .addSelect(['coil.id', 'coil.code', 'coil.material_family_id'])
       .orderBy('s.production_date', 'DESC')
       .addOrderBy('s.id', 'DESC');
 
@@ -220,13 +311,29 @@ export class InventoryService {
 
     const rows = await qb.getMany();
 
-    return rows.map((s) => {
+    const results: FinishedStockRow[] = [];
+
+    for (const s of rows) {
       const remainingCostValuePaisa = Math.round(
         Number(s.remainingWeightKg) * Number(s.finishedCostPerKgPaisa),
       );
-      return {
+
+      const familyId = s.sourceCoil?.materialFamilyId ?? 0;
+      let replacementCostPerKgPaisa = 0;
+      if (familyId > 0) {
+        const { replacementCostPerKgPaisa: rcp } =
+          await this.marketRatesService.getReplacementCostForFamily(familyId);
+        replacementCostPerKgPaisa = rcp;
+      }
+      const replacementValuePaisa =
+        replacementCostPerKgPaisa > 0
+          ? Math.round(Number(s.remainingWeightKg) * replacementCostPerKgPaisa)
+          : 0;
+
+      results.push({
         id: s.id,
         code: s.code,
+        heatNumber: s.heatNumber,
         sizeLabel: s.sizeLabel,
         thicknessMm: s.thicknessMm != null ? Number(s.thicknessMm) : null,
         color: s.color,
@@ -242,13 +349,17 @@ export class InventoryService {
         finishedCostPerKgPaisa: Number(s.finishedCostPerKgPaisa),
         totalProductionCostPaisa: Number(s.totalProductionCostPaisa),
         remainingCostValuePaisa,
+        replacementCostPerKgPaisa,
+        replacementValuePaisa,
         status: s.status,
         productionDate: new Date(s.productionDate).toISOString().split('T')[0],
         priceCategoryId: s.priceCategoryId,
         priceCategoryName: s.priceCategory?.name ?? null,
         priceCategoryCode: s.priceCategory?.code ?? null,
-      };
-    });
+      });
+    }
+
+    return results;
   }
 
   /**
@@ -317,27 +428,47 @@ export class InventoryService {
 
     const coils = await qb.getMany();
 
-    return coils.map((c) => ({
-      id: c.id,
-      code: c.code,
-      batchNumber: c.batchNumber,
-      supplierId: c.supplierId,
-      supplierName: c.supplier?.name ?? null,
-      priceCategoryId: c.priceCategoryId,
-      priceCategoryName: c.priceCategory?.name ?? null,
-      brand: c.brand,
-      color: c.color,
-      width: Number(c.width ?? 0),
-      thicknessMm: c.thicknessMm != null ? Number(c.thicknessMm) : null,
-      purchaseWeight: Number(c.purchaseWeight),
-      currentWeight: Number(c.currentWeight),
-      wastageWeight: Number(c.wastageWeight),
-      purchaseRatePaisa: Number(c.purchaseRatePaisa),
-      purchaseAmountPaisa: Number(c.purchaseAmountPaisa),
-      status: c.status,
-      processingStatus: c.processingStatus,
-      createdAt: c.createdAt.toISOString(),
-    }));
+    const results: RawCoilRow[] = [];
+
+    for (const c of coils) {
+      const familyId = c.materialFamilyId ?? 0;
+      let replacementCostPerKgPaisa = 0;
+      if (familyId > 0) {
+        const { replacementCostPerKgPaisa: rcp } =
+          await this.marketRatesService.getReplacementCostForFamily(familyId);
+        replacementCostPerKgPaisa = rcp;
+      }
+      const replacementValuePaisa =
+        replacementCostPerKgPaisa > 0
+          ? Math.round(Number(c.purchaseWeight) * replacementCostPerKgPaisa)
+          : 0;
+
+      results.push({
+        id: c.id,
+        code: c.code,
+        batchNumber: c.batchNumber,
+        supplierId: c.supplierId,
+        supplierName: c.supplier?.name ?? null,
+        priceCategoryId: c.priceCategoryId,
+        priceCategoryName: c.priceCategory?.name ?? null,
+        brand: c.brand,
+        color: c.color,
+        width: Number(c.width ?? 0),
+        thicknessMm: c.thicknessMm != null ? Number(c.thicknessMm) : null,
+        purchaseWeight: Number(c.purchaseWeight),
+        currentWeight: Number(c.currentWeight),
+        wastageWeight: Number(c.wastageWeight),
+        purchaseRatePaisa: Number(c.purchaseRatePaisa),
+        purchaseAmountPaisa: Number(c.purchaseAmountPaisa),
+        status: c.status,
+        processingStatus: c.processingStatus,
+        createdAt: c.createdAt.toISOString(),
+        replacementCostPerKgPaisa,
+        replacementValuePaisa,
+      });
+    }
+
+    return results;
   }
 
   private applyFinishedFilters(
@@ -367,9 +498,13 @@ export class InventoryService {
     }
     if (filters.search && filters.search.trim().length > 0) {
       const search = `%${filters.search.trim()}%`;
+      const exactSearch = filters.search.trim();
       qb.andWhere(
-        '(s.code LIKE :search OR s.size_label LIKE :search OR s.color LIKE :search)',
+        '(s.code LIKE :search OR s.size_label LIKE :search OR s.color LIKE :search OR s.heat_number LIKE :search)',
         { search },
+      );
+      qb.orderBy(
+        `(CASE WHEN s.heat_number = '${exactSearch}' THEN 0 ELSE 1 END)`,
       );
     }
   }

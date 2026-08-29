@@ -23,12 +23,16 @@ export enum FinishedChaddarStatus {
 @Index('idx_finished_stock_batch_id', ['cuttingBatchId'])
 @Index('idx_finished_stock_coil_id', ['sourceCoilId'])
 @Index('idx_finished_stock_status', ['status'])
+@Index('idx_finished_stock_heat_number', ['heatNumber'])
 export class FinishedChaddarStock {
   @PrimaryGeneratedColumn()
   id: number;
 
   @Column({ type: 'varchar', length: 30, unique: true })
   code: string;
+
+  @Column({ name: 'heat_number', type: 'varchar', length: 50, nullable: true })
+  heatNumber: string | null;
 
   @Column({ name: 'cutting_batch_id' })
   cuttingBatchId: number;
@@ -62,6 +66,15 @@ export class FinishedChaddarStock {
     nullable: true,
   })
   widthMm: number | null;
+
+  @Column({
+    name: 'width_inches',
+    type: 'decimal',
+    precision: 10,
+    scale: 3,
+    nullable: true,
+  })
+  widthInches: number | null;
 
   @Column({
     name: 'thickness_mm',

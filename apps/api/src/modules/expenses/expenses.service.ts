@@ -83,6 +83,7 @@ export class ExpensesService {
   async findOne(id: number): Promise<Expense> {
     const expense = await this.expenseRepository.findOne({ where: { id } });
     if (!expense) {
+      console.warn(`[ExpensesService] Expense not found: id=${id}`);
       throw new NotFoundException('Expense not found');
     }
     return expense;
@@ -125,8 +126,10 @@ export class ExpensesService {
   }
 
   async delete(id: number): Promise<void> {
+    console.log(`[ExpensesService] delete requested: id=${id}`);
     const expense = await this.findOne(id);
     await this.expenseRepository.remove(expense);
+    console.log(`[ExpensesService] delete completed: id=${id}`);
   }
 
   async getSummary(filters?: {

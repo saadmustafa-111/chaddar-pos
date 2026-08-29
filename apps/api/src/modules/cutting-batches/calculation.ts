@@ -20,12 +20,15 @@ import { BadRequestException } from '@nestjs/common';
 export interface CuttingRowInput {
   /** Length of one piece, in feet. Must be > 0. */
   lengthFt: number;
+  /** Width of the coil in inches. Used for heat number generation. */
+  widthInches: number;
   /** Number of pieces of that length. Must be a positive integer. */
   quantity: number;
 }
 
 export interface ResolvedCuttingRow {
   lengthFt: number;
+  widthInches: number;
   quantity: number;
   /** pieceWeight = avg10ftPieceWeight x (lengthFt / 10). */
   pieceWeightKg: number;
@@ -65,6 +68,7 @@ export function normalizeCuttingRow(
   index: number,
 ): CuttingRowInput {
   const lengthFt = Number(raw?.lengthFt);
+  const widthInches = Number(raw?.widthInches);
   const quantity = Number(raw?.quantity);
   const tag = `Row ${index + 1}`;
 
@@ -74,6 +78,12 @@ export function normalizeCuttingRow(
   if (lengthFt <= 0) {
     throw new BadRequestException(
       `${tag}: length (ft) must be greater than zero (got ${lengthFt})`,
+    );
+  }
+
+  if (Number.isFinite(widthInches) && widthInches <= 0) {
+    throw new BadRequestException(
+      `${tag}: width (inches) must be greater than zero (got ${widthInches})`,
     );
   }
 
@@ -91,7 +101,7 @@ export function normalizeCuttingRow(
     );
   }
 
-  return { lengthFt, quantity };
+  return { lengthFt, widthInches, quantity };
 }
 
 /** Normalize a list of raw row inputs (e.g. from a request body) into a
@@ -175,6 +185,7 @@ export function planCutting(args: PlanCuttingArgs): CuttingPlan {
     const totalWeightKg = ROUND_KG(pieceWeightKg * r.quantity);
     return {
       lengthFt: r.lengthFt,
+      widthInches: r.widthInches,
       quantity: r.quantity,
       pieceWeightKg,
       totalWeightKg,

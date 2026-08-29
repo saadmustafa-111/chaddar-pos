@@ -170,12 +170,12 @@ export default function ExpensesPage() {
     setIsDeleting(true);
     try {
       await expensesApi.remove(deleteTarget.id);
-      setDeleteTarget(null);
-      await loadData();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to delete expense');
     } finally {
+      setDeleteTarget(null);
       setIsDeleting(false);
+      await loadData();
     }
   };
 

@@ -16,11 +16,13 @@
 
 export interface CuttingRowInput {
   lengthFt: number;
+  widthInches: number;
   quantity: number;
 }
 
 export interface ResolvedCuttingRow {
   lengthFt: number;
+  widthInches: number;
   quantity: number;
   pieceWeightKg: number;
   totalWeightKg: number;
@@ -66,6 +68,8 @@ export function planCutting(
     if (
       !Number.isFinite(r.lengthFt) ||
       r.lengthFt <= 0 ||
+      !Number.isFinite(r.widthInches) ||
+      r.widthInches <= 0 ||
       !Number.isInteger(r.quantity) ||
       r.quantity <= 0
     ) {
@@ -93,6 +97,7 @@ export function planCutting(
     const totalWeightKg = roundKg(pieceWeightKg * r.quantity);
     return {
       lengthFt: r.lengthFt,
+      widthInches: r.widthInches,
       quantity: r.quantity,
       pieceWeightKg,
       totalWeightKg,

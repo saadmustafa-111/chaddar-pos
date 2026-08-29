@@ -53,6 +53,7 @@ interface Props {
 interface DraftRow {
   uid: string;
   lengthFt: string;
+  widthInches: string;
   quantity: string;
 }
 
@@ -64,8 +65,8 @@ function newUid(): string {
   return Math.random().toString(36).slice(2, 10);
 }
 
-function emptyRow(lengthFt: string = ''): DraftRow {
-  return { uid: newUid(), lengthFt, quantity: '' };
+function emptyRow(lengthFt: string = '', widthInches: string = ''): DraftRow {
+  return { uid: newUid(), lengthFt, widthInches, quantity: '' };
 }
 
 const finishedChaddarStatusColors = {
@@ -77,17 +78,19 @@ const finishedChaddarStatusColors = {
 
 /**
  * Parse the strings the operator typed into typed values, returning null
- * for any row that has invalid data. Length must be > 0; quantity must
- * be a positive integer.
+ * for any row that has invalid data. Length must be > 0; width must be > 0;
+ * quantity must be a positive integer.
  */
 function parseRows(rows: DraftRow[]): CuttingRowInput[] | null {
   const parsed: CuttingRowInput[] = [];
   for (const r of rows) {
     const lengthFt = parseFloat(r.lengthFt);
+    const widthInches = parseFloat(r.widthInches);
     const quantity = parseInt(r.quantity, 10);
     if (!Number.isFinite(lengthFt) || lengthFt <= 0) return null;
-    if (!Number.isInteger(quantity) || quantity <= 0) return null;
-    parsed.push({ lengthFt, quantity });
+    if (!Number.isFinite(widthInches) || widthInches <= 0) return null;
+    if (!Number.isFinite(quantity) || quantity <= 0) return null;
+    parsed.push({ lengthFt, widthInches, quantity });
   }
   return parsed;
 }
@@ -123,13 +126,13 @@ export function CuttingSection({
 
   const validRowCount = parsedRows ? parsedRows.length : 0;
   const hasAnyInput = rows.some(
-    (r) => r.lengthFt.trim() !== '' || r.quantity.trim() !== '',
+    (r) => r.lengthFt.trim() !== '' || r.widthInches.trim() !== '' || r.quantity.trim() !== '',
   );
   const validationMessage = (() => {
     if (!finishedCostReady) return null;
     if (!hasAnyInput) return null;
     if (!parsedRows) {
-      return 'Each row needs a length (> 0 ft) and a positive whole-number quantity.';
+      return 'Each row needs a length (> 0 ft), width (> 0 in), and a positive whole-number quantity.';
     }
     if (!plan) {
       return 'Cannot plan the cut. Check that the coil still has usable weight.';
@@ -157,7 +160,7 @@ export function CuttingSection({
 
   const handleRowChange = (
     uid: string,
-    field: 'lengthFt' | 'quantity',
+    field: 'lengthFt' | 'widthInches' | 'quantity',
     value: string,
   ) => {
     setRows((prev) =>
@@ -176,7 +179,7 @@ export function CuttingSection({
       return;
     }
     if (!parsedRows || parsedRows.length === 0) {
-      setError('Add at least one size row (length in feet + quantity).');
+      setError('Add at least one size row (length in feet + width in inches + quantity).');
       return;
     }
     if (!plan) {
@@ -287,6 +290,10 @@ export function CuttingSection({
                   row.lengthFt.trim() !== '' &&
                   (Number.isNaN(parseFloat(row.lengthFt)) ||
                     parseFloat(row.lengthFt) <= 0);
+                const widthInvalid =
+                  row.widthInches.trim() !== '' &&
+                  (Number.isNaN(parseFloat(row.widthInches)) ||
+                    parseFloat(row.widthInches) <= 0);
                 const quantityInvalid =
                   row.quantity.trim() !== '' &&
                   (!Number.isInteger(parseInt(row.quantity, 10)) ||
@@ -298,7 +305,7 @@ export function CuttingSection({
                   >
                     <FormField
                       label={index === 0 ? 'Length (ft)' : undefined}
-                      className="col-span-3"
+                      className="col-span-2"
                       error={
                         lengthInvalid
                           ? 'Must be > 0'
@@ -324,8 +331,35 @@ export function CuttingSection({
                       />
                     </FormField>
                     <FormField
-                      label={index === 0 ? 'Quantity (pieces)' : undefined}
-                      className="col-span-4"
+                      label={index === 0 ? 'Width (in)' : undefined}
+                      className="col-span-2"
+                      error={
+                        widthInvalid
+                          ? 'Must be > 0'
+                          : null
+                      }
+                    >
+                      <TextInput
+                        type="number"
+                        min="0.001"
+                        step="0.001"
+                        value={row.widthInches}
+                        onChange={(e) =>
+                          handleRowChange(
+                            row.uid,
+                            'widthInches',
+                            e.target.value,
+                          )
+                        }
+                        disabled={isSaving}
+                        invalid={widthInvalid}
+                        placeholder="e.g. 2.50"
+                        inputMode="decimal"
+                      />
+                    </FormField>
+                    <FormField
+                      label={index === 0 ? 'Quantity (pcs)' : undefined}
+                      className="col-span-3"
                       error={
                         quantityInvalid
                           ? 'Whole number, > 0'
@@ -521,6 +555,7 @@ export function CuttingSection({
           <DataTable
             headers={[
               { label: 'Batch' },
+              { label: 'Heat #' },
               { label: 'Sizes cut' },
               { label: 'Pieces', align: 'right' },
               { label: 'Weight Used', align: 'right' },
@@ -541,7 +576,12 @@ export function CuttingSection({
                         {cuttingBatch.code}
                       </div>
                       <div className="text-xs text-zinc-500 mt-0.5">
-                        First stock: {finishedStock.code}
+                        Stock: {finishedStock.code}
+                      </div>
+                    </TD>
+                    <TD>
+                      <div className="text-sm font-mono text-yellow-400">
+                        {finishedStock.heatNumber ?? '—'}
                       </div>
                     </TD>
                     <TD>

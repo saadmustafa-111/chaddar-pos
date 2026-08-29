@@ -233,7 +233,7 @@ export default function InventoryOverviewPage() {
                     search: e.target.value,
                   }))
                 }
-                placeholder="Code, size, color…"
+                placeholder="Code, heat number, size, color…"
               />
             </FormField>
             <FormField label="Category" className="md:col-span-2">
@@ -341,6 +341,7 @@ export default function InventoryOverviewPage() {
           <DataTable
             headers={[
               { label: 'Stock' },
+              { label: 'Heat #' },
               { label: 'Category' },
               { label: 'Size' },
               { label: 'Gauge', align: 'right' },
@@ -354,7 +355,7 @@ export default function InventoryOverviewPage() {
             <TBody>
               {filteredFinished.length === 0 ? (
                 <tr>
-                  <td colSpan={9} className="p-0">
+                  <td colSpan={10} className="p-0">
                     <EmptyState
                       title="No finished stock matches"
                       description="Adjust filters or cut a new batch to see results."
@@ -370,6 +371,11 @@ export default function InventoryOverviewPage() {
                       </div>
                       <div className="text-xs text-zinc-500 mt-0.5">
                         Coil: {row.sourceCoilCode ?? `#${row.sourceCoilId}`}
+                      </div>
+                    </TD>
+                    <TD>
+                      <div className="text-sm font-mono text-yellow-400">
+                        {row.heatNumber ?? '—'}
                       </div>
                     </TD>
                     <TD>

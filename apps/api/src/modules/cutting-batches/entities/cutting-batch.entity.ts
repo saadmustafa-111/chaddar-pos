@@ -54,6 +54,15 @@ export class CuttingBatch {
   widthMm: number | null;
 
   @Column({
+    name: 'width_inches',
+    type: 'decimal',
+    precision: 10,
+    scale: 3,
+    nullable: true,
+  })
+  widthInches: number | null;
+
+  @Column({
     name: 'thickness_mm',
     type: 'decimal',
     precision: 10,

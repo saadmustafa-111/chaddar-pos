@@ -27,6 +27,30 @@ import {
   planCutting,
 } from './calculation';
 
+/**
+ * Generate a heat number for a finished stock row.
+ * Formula: lengthDigits + widthDigits + last3DigitsOf(Average10*1000)
+ * - lengthDigits: digits only from length in feet (e.g., 10 -> "10", 8 -> "8")
+ * - widthDigits: digits only from width in inches (e.g., 2.50 -> "250", 1.25 -> "125")
+ * - last3Digits: last 3 digits of round(avg10ftPieceWeightKg * 1000)
+ *
+ * Example: Length=10, Width=2.50, Average10=14.785
+ * -> lengthDigits="10", widthDigits="250"
+ * -> avg10Multiplier=round(14.785*1000)=14785, last3="785"
+ * -> heatNumber = "10" + "250" + "785" = "10250785"
+ */
+function generateHeatNumber(
+  lengthFt: number,
+  widthInches: number,
+  avg10ftPieceWeightKg: number,
+): string {
+  const lengthDigits = String(Math.round(lengthFt)).replace(/\D/g, '');
+  const widthDigits = String(widthInches).replace(/\D/g, '');
+  const avg10Multiplier = Math.round(avg10ftPieceWeightKg * 1000);
+  const last3Digits = String(avg10Multiplier % 1000).padStart(3, '0');
+  return `${lengthDigits}${widthDigits}${last3Digits}`;
+}
+
 export interface CuttingBatchWithStock {
   cuttingBatch: CuttingBatch;
   finishedStock: FinishedChaddarStock;
@@ -218,6 +242,18 @@ export class CuttingBatchesService {
         throw new NotFoundException('Source coil not found');
       }
 
+      // Width must come from the cutting row for heat number generation.
+      // If the row provides a valid widthInches, generate heatNumber.
+      // If widthInches is missing (legacy callers), heatNumber is null (historical records).
+      // If widthInches is provided but invalid, throw immediately.
+      for (const row of normalizedRows) {
+        if (Number.isFinite(row.widthInches) && row.widthInches <= 0) {
+          throw new BadRequestException(
+            'Width (inches) must be greater than zero.',
+          );
+        }
+      }
+
       // Idempotency guard: if the operator (or a flaky double-click)
       // submits the exact same payload twice within 10 seconds against
       // the same coil, return the previously-created batch instead of
@@ -317,6 +353,11 @@ export class CuttingBatchesService {
         priceCategoryId: coil.priceCategoryId ?? null,
         sizeLabel: headlineLabel,
         widthMm: coil.width ? Number(coil.width) : null,
+        widthInches:
+          normalizedRows.length > 0 &&
+          Number.isFinite(normalizedRows[0].widthInches)
+            ? normalizedRows[0].widthInches
+            : null,
         thicknessMm: coil.thicknessMm ? Number(coil.thicknessMm) : null,
         color: coil.color,
         brand: coil.brand,
@@ -353,6 +394,7 @@ export class CuttingBatchesService {
           priceCategoryId: coil.priceCategoryId ?? null,
           sizeLabel: defaultSizeLabelForRow(r),
           widthMm: cuttingBatch.widthMm,
+          widthInches: Number.isFinite(r.widthInches) ? r.widthInches : null,
           thicknessMm: cuttingBatch.thicknessMm,
           color: coil.color,
           brand: coil.brand,
@@ -366,6 +408,14 @@ export class CuttingBatchesService {
           totalProductionCostPaisa: perRowProductionCostPaisa,
           status: FinishedChaddarStatus.AVAILABLE,
           productionDate: cuttingBatch.productionDate,
+          heatNumber:
+            Number.isFinite(r.widthInches) && r.widthInches > 0
+              ? generateHeatNumber(
+                  r.lengthFt,
+                  r.widthInches,
+                  plan.avg10ftPieceWeightKg,
+                )
+              : null,
         });
 
         const savedStock = await queryRunner.manager.save(stockRow);
