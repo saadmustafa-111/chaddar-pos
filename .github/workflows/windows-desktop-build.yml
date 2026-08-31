@@ -29,9 +29,7 @@ jobs:
           cache: 'pnpm'
 
       - name: Install dependencies
-        run: pnpm install --frozen-lockfile
-        env:
-          GYP_MSVS_VERSION: 2022
+        run: pnpm install --frozen-lockfile --ignore-scripts
 
       - name: Build API
         run: pnpm --filter api build
@@ -41,6 +39,9 @@ jobs:
 
       - name: Build Desktop
         run: pnpm --filter desktop build
+
+      - name: Rebuild native modules for Electron
+        run: pnpm --filter desktop exec npx --yes electron-builder install-app-deps
 
       - name: Electron Builder
         run: pnpm --filter desktop dist --win nsis --x64
