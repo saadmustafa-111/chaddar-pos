@@ -21,9 +21,9 @@
     "typescript": "^5.7.3"
   },
   "build": {
-    "appId": "com.steelcoil.pos",
-    "productName": "SteelCoil POS",
-    "copyright": "Copyright © 2026 SteelCoil",
+    "appId": "com.steelchaddar.pos",
+    "productName": "SteelChaddar POS",
+    "copyright": "Copyright © 2026 SteelChaddar",
     "directories": {
       "output": "release",
       "buildResources": "resources"
@@ -78,7 +78,7 @@
       "deleteAppDataOnUninstall": false,
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
-      "shortcutName": "SteelCoil POS"
+      "shortcutName": "SteelChaddar POS"
     },
     "electronDownload": {
       "mirror": "https://npmmirror.com/mirrors/electron/"
