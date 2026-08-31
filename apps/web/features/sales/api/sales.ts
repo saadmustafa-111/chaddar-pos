@@ -48,6 +48,7 @@ export interface FinishedChaddarStock {
   sourceCoilId: number;
   sizeLabel: string;
   widthMm: number | null;
+  widthInches: number | null;
   thicknessMm: number | null;
   color: string | null;
   brand: string | null;
@@ -66,6 +67,8 @@ export interface FinishedChaddarStock {
   createdAt: string;
   updatedAt: string;
   priceCategory: FinishedChaddarStockPriceCategory | null;
+  /** Heat number for the finished stock row. */
+  heatNumber: string | null;
 }
 
 export type SaleStatus = 'COMPLETED';
