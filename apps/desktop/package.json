@@ -41,7 +41,7 @@
       {
         "from": "../web/.next",
         "to": "web/.next",
-        "filter": ["**/*"]
+        "filter": ["**/*", "!**/dev/**", "!**/cache/**"]
       },
       {
         "from": "../web/public",

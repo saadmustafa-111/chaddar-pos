@@ -22,6 +22,8 @@ function copyDir(src, dest) {
     try {
       if (entry.isDirectory()) {
         if (entry.name === 'node_modules') continue;
+        if (entry.name === 'dev') continue;
+        if (entry.name === 'cache') continue;
         if (entry.isSymbolicLink()) continue;
         copyDir(srcPath, destPath);
       } else {
