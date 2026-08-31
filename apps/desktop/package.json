@@ -36,7 +36,12 @@
       {
         "from": "../api/dist",
         "to": "api",
-        "filter": ["**/*", "!**/*.map"]
+        "filter": ["**/*", "!**/*.map", "!**/*.tsbuildinfo"]
+      },
+      {
+        "from": "../api/node_modules",
+        "to": "api/node_modules",
+        "filter": ["**/*", "!**/dev/**", "!**/test/**", "!**/.*", "!**/*.spec.*", "!**/*.map"]
       },
       {
         "from": "../web/.next",

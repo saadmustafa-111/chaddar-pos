@@ -5,9 +5,13 @@ import * as fs from 'fs';
 import log from 'electron-log';
 
 // ─── Configure logging ────────────────────────────────────────────────────────
+const userDataPath = app.getPath('userData');
 log.transports.file.level = 'info';
 log.transports.console.level = 'debug';
+log.transports.file.resolvePathFn = () => path.join(userDataPath, 'logs', 'main.log');
 log.info('Application starting...');
+log.info(`User data path: ${userDataPath}`);
+log.info(`Resources path: ${app.isPackaged ? process.resourcesPath : 'unpackaged'}`);
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 interface ServerProcess {
@@ -30,6 +34,25 @@ function getResourcePath(relative: string): string {
 
 function getUserDataPath(): string {
   return app.getPath('userData');
+}
+
+function findNodeExecutable(): string {
+  if (app.isPackaged) {
+    const resourcesPath = process.resourcesPath;
+    const possiblePaths = [
+      path.join(resourcesPath, 'node.exe'),
+      path.join(resourcesPath, 'bin', 'node.exe'),
+      path.join(resourcesPath, 'node', 'bin', 'node.exe'),
+    ];
+    for (const p of possiblePaths) {
+      if (fs.existsSync(p)) {
+        log.info(`Found bundled Node at: ${p}`);
+        return p;
+      }
+    }
+    log.warn('No bundled Node found');
+  }
+  return process.execPath;
 }
 
 // ─── Port allocation ──────────────────────────────────────────────────────────
@@ -113,8 +136,16 @@ async function startApiServer(apiPort: number): Promise<ServerProcess> {
     ALLOWED_ORIGIN: '*',
   };
 
-  const apiProc = spawn(process.execPath, [path.join(apiDistPath, 'main.js')], {
+  const nodeExe = findNodeExecutable();
+  const apiScriptPath = path.join(apiDistPath, 'main.js');
+  log.info(`Node executable: ${nodeExe}`);
+  log.info(`API script path: ${apiScriptPath}`);
+  log.info(`API dist path: ${apiDistPath}`);
+  log.info(`API node_modules: ${path.join(apiDistPath, 'node_modules')}`);
+
+  const apiProc = spawn(nodeExe, [apiScriptPath], {
     env: apiEnv,
+    cwd: apiDistPath,
     stdio: ['ignore', 'pipe', 'pipe'],
     detached: false,
     windowsHide: true,
@@ -159,7 +190,8 @@ async function startWebServer(webPort: number, apiUrl: string): Promise<ServerPr
     NEXT_PUBLIC_API_URL: apiUrl,
   };
 
-  const webProc = spawn(process.execPath, [nextServerPath], {
+  const nodeExe = findNodeExecutable();
+  const webProc = spawn(nodeExe, [nextServerPath], {
     env: webEnv,
     stdio: ['ignore', 'pipe', 'pipe'],
     detached: false,

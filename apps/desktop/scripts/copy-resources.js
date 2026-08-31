@@ -5,11 +5,12 @@ const path = require('path');
 const root = path.join(__dirname, '..');
 const resourcesDir = path.join(root, 'resources');
 const apiSource = path.join(root, '..', 'api', 'dist');
+const apiNodeModules = path.join(root, '..', 'api', 'node_modules');
 const webSource = path.join(root, '..', 'web', '.next');
 const webPublic = path.join(root, '..', 'web', 'public');
 const webPackage = path.join(root, '..', 'web', 'package.json');
 
-function copyDir(src, dest) {
+function copyDir(src, dest, includeNodeModules = false) {
   if (!fs.existsSync(src)) {
     console.warn(`Source not found: ${src} — skipping`);
     return;
@@ -21,11 +22,17 @@ function copyDir(src, dest) {
     const destPath = path.join(dest, entry.name);
     try {
       if (entry.isDirectory()) {
-        if (entry.name === 'node_modules') continue;
         if (entry.name === 'dev') continue;
         if (entry.name === 'cache') continue;
+        if (entry.name === '.next') continue;
         if (entry.isSymbolicLink()) continue;
-        copyDir(srcPath, destPath);
+        if (entry.name === 'node_modules') {
+          if (includeNodeModules) {
+            copyDir(srcPath, destPath, false);
+          }
+          continue;
+        }
+        copyDir(srcPath, destPath, includeNodeModules);
       } else {
         fs.copyFileSync(srcPath, destPath);
       }
@@ -57,6 +64,13 @@ function copyFile(src, dest) {
 console.log('Copying build resources for Electron...');
 
 copyDir(apiSource, path.join(resourcesDir, 'api'));
+const apiNodeModulesSrc = path.join(root, '..', 'api', 'node_modules');
+if (fs.existsSync(apiNodeModulesSrc)) {
+  console.log('Copying API node_modules...');
+  copyDir(apiNodeModulesSrc, path.join(resourcesDir, 'api', 'node_modules'));
+} else {
+  console.warn('API node_modules not found at:', apiNodeModulesSrc);
+}
 copyDir(webSource, path.join(resourcesDir, 'web', '.next'));
 if (fs.existsSync(webPublic)) {
   copyDir(webPublic, path.join(resourcesDir, 'web', 'public'));
