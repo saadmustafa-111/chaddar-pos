@@ -18,6 +18,7 @@ export interface Purchase {
 
 export interface CreateCoilRequest {
   materialFamilyId?: number;
+  priceCategoryId?: number;
   brand?: string;
   color?: string;
   batchNumber?: string;
@@ -45,4 +46,6 @@ export const purchasesApi = {
 
   create: (data: CreatePurchaseRequest) =>
     api.post<Purchase>('/purchases', data, true),
+
+  remove: (id: number) => api.delete<void>(`/purchases/${id}`, true),
 };

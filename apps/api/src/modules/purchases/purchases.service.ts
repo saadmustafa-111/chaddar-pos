@@ -13,6 +13,9 @@ import {
 } from '../inventory-movements/entities/inventory-movement.entity';
 import { CreatePurchaseDto } from './dto/create-purchase.dto';
 import { Supplier } from '../suppliers/entities/supplier.entity';
+import { SupplierLedgerService } from '../suppliers/supplier-ledger.service';
+import { AttachmentsService } from '../attachments/attachments.service';
+import { AttachmentEntityType } from '../attachments/entities/attachment.entity';
 
 @Injectable()
 export class PurchasesService {
@@ -26,6 +29,8 @@ export class PurchasesService {
     @InjectRepository(Supplier)
     private readonly supplierRepository: Repository<Supplier>,
     private readonly dataSource: DataSource,
+    private readonly supplierLedgerService: SupplierLedgerService,
+    private readonly attachmentsService: AttachmentsService,
   ) {}
 
   private async generatePurchaseCode(): Promise<string> {
@@ -142,6 +147,7 @@ export class PurchasesService {
           purchaseId: savedPurchase.id,
           supplierId: createDto.supplierId,
           materialFamilyId: coilDto.materialFamilyId ?? null,
+          priceCategoryId: coilDto.priceCategoryId ?? null,
           brand: coilDto.brand ?? null,
           color: coilDto.color ?? null,
           width: coilDto.width,
@@ -171,6 +177,18 @@ export class PurchasesService {
         });
 
         await queryRunner.manager.save(movement);
+
+        // Record the payable side of the purchase in the supplier
+        // ledger so balances stay consistent with the coil totals.
+        await this.supplierLedgerService.recordPurchaseDueInTransaction(
+          queryRunner.manager,
+          createDto.supplierId,
+          savedPurchase.id,
+          purchaseAmount,
+          savedPurchase.purchaseDate,
+          purchaseCode,
+          createdBy ?? null,
+        );
       }
 
       await queryRunner.commitTransaction();
@@ -207,5 +225,55 @@ export class PurchasesService {
     }
 
     return purchase;
+  }
+
+  async delete(id: number): Promise<void> {
+    const purchase = await this.purchaseRepository.findOne({
+      where: { id },
+      relations: { coils: true, ledgerEntries: true },
+    });
+
+    if (!purchase) {
+      throw new NotFoundException('Purchase not found');
+    }
+
+    const coilCount = purchase.coils?.length ?? 0;
+    const ledgerEntryCount = purchase.ledgerEntries?.length ?? 0;
+
+    if (coilCount > 0) {
+      throw new BadRequestException(
+        `Cannot delete this purchase because it has ${coilCount} coil(s) associated with it. Purchase history must be preserved.`,
+      );
+    }
+
+    if (ledgerEntryCount > 0) {
+      throw new BadRequestException(
+        `Cannot delete this purchase because it has ${ledgerEntryCount} supplier ledger entry/entries associated with it. Purchase history must be preserved.`,
+      );
+    }
+
+    const attachments = await this.attachmentsService.findByEntity(
+      AttachmentEntityType.PURCHASE,
+      id,
+    );
+    if (attachments.length > 0) {
+      throw new BadRequestException(
+        `Cannot delete this purchase because it has ${attachments.length} attached document(s). Delete the documents first.`,
+      );
+    }
+
+    const queryRunner = this.dataSource.createQueryRunner();
+    await queryRunner.connect();
+    await queryRunner.startTransaction();
+
+    try {
+      await queryRunner.manager.remove(purchase);
+      await queryRunner.commitTransaction();
+    } catch (error) {
+      await queryRunner.rollbackTransaction();
+      throw error;
+    } finally {
+      await queryRunner.release();
+    }
   }
 }

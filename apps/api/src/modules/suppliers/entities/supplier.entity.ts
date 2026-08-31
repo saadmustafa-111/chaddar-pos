@@ -7,6 +7,7 @@ import {
   OneToMany,
 } from 'typeorm';
 import { Purchase } from '../../purchases/entities/purchase.entity';
+import { SupplierLedgerEntry } from './supplier-ledger-entry.entity';
 
 @Entity('suppliers')
 export class Supplier {
@@ -53,4 +54,7 @@ export class Supplier {
 
   @OneToMany(() => Purchase, (purchase) => purchase.supplier)
   purchases: Purchase[];
+
+  @OneToMany(() => SupplierLedgerEntry, (entry) => entry.supplier)
+  ledgerEntries: SupplierLedgerEntry[];
 }

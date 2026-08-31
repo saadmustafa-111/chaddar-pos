@@ -1,7 +1,10 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, DataSource } from 'typeorm';
-import { CoilLandingExpense } from './entities/coil-landing-expense.entity';
+import {
+  CoilLandingExpense,
+  LandingExpenseType,
+} from './entities/coil-landing-expense.entity';
 import { CreateCoilLandingExpenseDto } from './dto/create-coil-landing-expense.dto';
 import { UpdateCoilLandingExpenseDto } from './dto/update-coil-landing-expense.dto';
 import { Coil } from '../coils/entities/coil.entity';
@@ -49,11 +52,11 @@ export class LandingExpensesService {
 
     const expense = this.expenseRepository.create({
       coilId,
-      type: createDto.type,
+      type: createDto.type ?? LandingExpenseType.OTHER,
       amountPaisa: createDto.amountPaisa,
       expenseDate: new Date(createDto.expenseDate),
-      description: createDto.description || null,
-      referenceNumber: createDto.referenceNumber || null,
+      description: createDto.description.trim(),
+      referenceNumber: createDto.referenceNumber?.trim() || null,
     });
 
     return this.expenseRepository.save(expense);
@@ -78,7 +81,7 @@ export class LandingExpensesService {
     }
 
     if (updateDto.description !== undefined) {
-      expense.description = updateDto.description || null;
+      expense.description = updateDto.description?.trim() || null;
     }
 
     if (updateDto.referenceNumber !== undefined) {

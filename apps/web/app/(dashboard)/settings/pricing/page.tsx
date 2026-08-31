@@ -42,6 +42,10 @@ export default function PricingPage() {
     );
   };
 
+  const handleDeleted = (id: number) => {
+    setCategories((prev) => prev.filter((c) => c.id !== id));
+  };
+
   if (isLoading) {
     return (
       <div className="flex items-center justify-center h-full">
@@ -71,6 +75,7 @@ export default function PricingPage() {
         <PriceCategoryTable
           categories={categories}
           onUpdated={handleUpdated}
+          onDeleted={handleDeleted}
         />
       )}
     </div>

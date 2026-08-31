@@ -25,6 +25,12 @@ export class AuthController {
   async login(@Body() loginDto: LoginDto, @Req() req: Request) {
     await this.authService.login(loginDto);
     (req.session as SessionData).authenticated = true;
+    // Persist the session before responding so the Set-Cookie header is
+    // attached to the response (without this, `saveUninitialized: false`
+    // means the cookie is never emitted for the very first login).
+    await new Promise<void>((resolve, reject) => {
+      req.session.save((err?: Error | null) => (err ? reject(err) : resolve()));
+    });
     return { message: 'Login successful' };
   }
 

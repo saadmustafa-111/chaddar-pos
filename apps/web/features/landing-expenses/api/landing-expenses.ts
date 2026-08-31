@@ -1,6 +1,6 @@
 import { api } from '../../auth/api/client';
 
-export type LandingExpenseType =
+export type LegacyExpenseType =
   | 'TRANSPORT'
   | 'FREIGHT'
   | 'LOADING'
@@ -9,10 +9,20 @@ export type LandingExpenseType =
   | 'DELIVERY'
   | 'OTHER';
 
+export const legacyExpenseTypeLabels: Record<LegacyExpenseType, string> = {
+  TRANSPORT: 'Transport',
+  FREIGHT: 'Freight',
+  LOADING: 'Loading',
+  UNLOADING: 'Unloading',
+  HANDLING: 'Handling',
+  DELIVERY: 'Delivery',
+  OTHER: 'Other',
+};
+
 export interface LandingExpense {
   id: number;
   coilId: number;
-  type: LandingExpenseType;
+  type: string;
   amountPaisa: number;
   description: string | null;
   referenceNumber: string | null;
@@ -23,15 +33,13 @@ export interface LandingExpense {
 }
 
 export interface CreateLandingExpenseRequest {
-  type: LandingExpenseType;
   amountPaisa: number;
   expenseDate: string;
-  description?: string;
+  description: string;
   referenceNumber?: string;
 }
 
 export interface UpdateLandingExpenseRequest {
-  type?: LandingExpenseType;
   amountPaisa?: number;
   expenseDate?: string;
   description?: string;
@@ -46,7 +54,7 @@ export const landingExpensesApi = {
     api.post<LandingExpense>(`/coils/${coilId}/landing-expenses`, data, true),
 
   update: (coilId: number, expenseId: number, data: UpdateLandingExpenseRequest) =>
-    api.post<LandingExpense>(
+    api.patch<LandingExpense>(
       `/coils/${coilId}/landing-expenses/${expenseId}`,
       data,
       true,
@@ -55,3 +63,11 @@ export const landingExpensesApi = {
   remove: (coilId: number, expenseId: number) =>
     api.delete<void>(`/coils/${coilId}/landing-expenses/${expenseId}`, true),
 };
+
+export function getExpenseDisplayName(expense: LandingExpense): string {
+  if (expense.description && expense.description.trim().length > 0) {
+    return expense.description.trim();
+  }
+  const legacy = expense.type as LegacyExpenseType;
+  return legacyExpenseTypeLabels[legacy] ?? expense.type ?? 'Expense';
+}

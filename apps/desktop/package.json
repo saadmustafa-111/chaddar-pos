@@ -1,18 +1,89 @@
 {
-  "name": "@steelcoil/desktop",
-  "version": "0.1.0",
+  "name": "desktop",
+  "version": "1.0.0",
+  "description": "SteelCoil POS Desktop Application",
+  "main": "dist/main/index.js",
+  "author": "SteelCoil",
+  "license": "UNLICENSED",
   "private": true,
-  "main": "dist/main/main.js",
   "scripts": {
-    "build": "tsc",
-    "dev": "pnpm build && electron .",
-    "typecheck": "tsc --noEmit"
+    "build": "tsc && node scripts/copy-resources.js",
+    "start": "electron .",
+    "dist": "electron-builder"
   },
-  "packageManager": "pnpm@10.17.1",
+  "dependencies": {
+    "electron-log": "^5.2.4"
+  },
   "devDependencies": {
-    "@types/node": "^24.0.0",
-    "electron": "^38.0.0",
-    "tsx": "^4.0.0",
-    "typescript": "^5.0.0"
+    "@types/node": "^20.0.0",
+    "electron": "^33.2.1",
+    "electron-builder": "^26.15.3",
+    "typescript": "^5.7.3"
+  },
+  "build": {
+    "appId": "com.steelchaddar.pos",
+    "productName": "SteelChaddar POS",
+    "copyright": "Copyright © 2026 SteelChaddar",
+    "directories": {
+      "output": "release",
+      "buildResources": "resources"
+    },
+    "files": [
+      "dist/**/*",
+      "resources/**/*"
+    ],
+    "extraResources": [
+      {
+        "from": "../api/dist",
+        "to": "api",
+        "filter": ["**/*", "!**/*.map"]
+      },
+      {
+        "from": "../web/.next",
+        "to": "web/.next",
+        "filter": ["**/*", "!**/dev/**", "!**/cache/**"]
+      },
+      {
+        "from": "../web/public",
+        "to": "web/public",
+        "filter": ["**/*"]
+      },
+      {
+        "from": "../web/package.json",
+        "to": "web/package.json"
+      }
+    ],
+    "asar": true,
+    "asarUnpack": [
+      "resources/api/**/node_modules/better-sqlite3/**/*",
+      "resources/api/**/node_modules/argon2/**/*",
+      "resources/api/**/node_modules/bcrypt/**/*"
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": ["x64"]
+        },
+        {
+          "target": "zip",
+          "arch": ["x64"]
+        }
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "deleteAppDataOnUninstall": false,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "SteelChaddar POS"
+    },
+    "electronDownload": {
+      "mirror": "https://npmmirror.com/mirrors/electron/"
+    },
+    "npmRebuild": true,
+    "nodeGypRebuild": false
   }
 }

@@ -18,6 +18,17 @@ export enum MovementType {
   SALE = 'SALE',
   ADJUSTMENT = 'ADJUSTMENT',
   RETURN = 'RETURN',
+  /**
+   * Material moved from a raw coil into the separate Plane Stock
+   * category. Always a deduction against the source coil and a
+   * positive entry in Plane Stock; never wastage and never a sale.
+   */
+  PLANE_TRANSFER = 'PLANE_TRANSFER',
+  /**
+   * Material moved out of Plane Stock back to the source coil (or
+   * onwards into a finished operation). Reserved for future flows.
+   */
+  PLANE_REVERSAL = 'PLANE_REVERSAL',
 }
 
 @Entity('inventory_movements')

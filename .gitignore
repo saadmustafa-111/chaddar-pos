@@ -6,6 +6,10 @@ out/
 dist/
 build/
 release/
+win-unpacked/
+
+*.exe
+*.dll
 
 .env
 .env.*
@@ -22,3 +26,6 @@ release/
 Thumbs.db
 .vscode/
 .idea/
+
+apps/desktop/resources/api/
+apps/desktop/resources/web/

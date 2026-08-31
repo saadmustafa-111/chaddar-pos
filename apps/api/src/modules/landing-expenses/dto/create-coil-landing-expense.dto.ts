@@ -6,15 +6,15 @@ import {
   Min,
   MaxLength,
   IsDateString,
-  IsEnum,
 } from 'class-validator';
 import { Transform } from 'class-transformer';
-import { LandingExpenseType } from '../entities/coil-landing-expense.entity';
 
 export class CreateCoilLandingExpenseDto {
-  @IsEnum(LandingExpenseType)
+  @IsString()
   @IsNotEmpty()
-  type: LandingExpenseType;
+  @MaxLength(20)
+  @IsOptional()
+  type?: string;
 
   @IsInt()
   @Min(1)
@@ -26,12 +26,12 @@ export class CreateCoilLandingExpenseDto {
   expenseDate: string;
 
   @IsString()
-  @IsOptional()
+  @IsNotEmpty()
   @MaxLength(255)
-  description?: string;
+  description: string;
 
   @IsString()
   @IsOptional()
-  @MaxLength(50)
+  @MaxLength(255)
   referenceNumber?: string;
 }

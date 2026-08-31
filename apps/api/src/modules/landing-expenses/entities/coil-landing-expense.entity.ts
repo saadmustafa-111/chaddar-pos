@@ -36,7 +36,7 @@ export class CoilLandingExpense {
     length: 20,
     default: LandingExpenseType.OTHER,
   })
-  type: LandingExpenseType;
+  type: string;
 
   @Column({
     name: 'amount_paisa',
