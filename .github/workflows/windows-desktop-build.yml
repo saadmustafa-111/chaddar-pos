@@ -40,12 +40,86 @@ jobs:
       - name: Build Desktop
         run: pnpm --filter desktop build
 
+      - name: Verify API build output exists
+        run: |
+          if (!(Test-Path "apps/api/dist/main.js")) { throw "API dist main.js not found" }
+          if (!(Test-Path "apps/api/dist/app.module.js")) { throw "API dist app.module.js not found" }
+          if (!(Test-Path "apps/api/dist/modules")) { throw "API dist modules directory not found" }
+          Write-Host "API build output verified: PASS"
+
+      - name: Verify API node_modules critical packages
+        run: |
+          $required = @(
+            "apps/api/node_modules/@nestjs/core",
+            "apps/api/node_modules/@nestjs/common",
+            "apps/api/node_modules/@nestjs/platform-express",
+            "apps/api/node_modules/typeorm",
+            "apps/api/node_modules/better-sqlite3",
+            "apps/api/node_modules/bcryptjs",
+            "apps/api/node_modules/express",
+            "apps/api/node_modules/reflect-metadata"
+          )
+          foreach ($pkg in $required) {
+            if (!(Test-Path $pkg)) { throw "Missing required package: $pkg" }
+            Write-Host "Found: $pkg"
+          }
+          Write-Host "API node_modules verification: PASS"
+
       - name: Rebuild native modules for Electron
         run: pnpm --filter desktop exec npx --yes electron-builder install-app-deps
 
       - name: Electron Builder
         run: pnpm --filter desktop dist --win nsis --x64
         timeout-minutes: 90
+
+      - name: Verify win-unpacked resources
+        shell: pwsh
+        run: |
+          $winUnpacked = "apps/desktop/release/win-unpacked"
+          if (!(Test-Path "$winUnpacked/resources/api/main.js")) { throw "Missing: resources/api/main.js" }
+          if (!(Test-Path "$winUnpacked/resources/api/app.module.js")) { throw "Missing: resources/api/app.module.js" }
+          if (!(Test-Path "$winUnpacked/resources/api/modules")) { throw "Missing: resources/api/modules" }
+
+          $requiredModules = @(
+            "$winUnpacked/resources/api/node_modules/@nestjs/core",
+            "$winUnpacked/resources/api/node_modules/@nestjs/common",
+            "$winUnpacked/resources/api/node_modules/typeorm",
+            "$winUnpacked/resources/api/node_modules/better-sqlite3",
+            "$winUnpacked/resources/api/node_modules/bcryptjs"
+          )
+          foreach ($mod in $requiredModules) {
+            if (!(Test-Path $mod)) { throw "Missing module: $mod" }
+            Write-Host "Found: $mod"
+          }
+
+          $nativeBindings = @(
+            "$winUnpacked/resources/api/node_modules/better-sqlite3/build/Release/better_sqlite3.node"
+          )
+          foreach ($binding in $nativeBindings) {
+            if (!(Test-Path $binding)) { Write-Host "WARNING: Native binding missing: $binding" } else { Write-Host "Found native binding: $binding" }
+          }
+
+          if (!(Test-Path "$winUnpacked/resources/web")) { throw "Missing: resources/web" }
+          if (!(Test-Path "$winUnpacked/resources/web/.next")) { throw "Missing: resources/web/.next" }
+
+          Write-Host "win-unpacked resources verification: PASS"
+
+      - name: Verify NSIS installer was created
+        shell: pwsh
+        run: |
+          $exeFiles = Get-ChildItem "apps/desktop/release" -Filter "*.exe" -Recurse -File
+          if ($exeFiles.Count -eq 0) { throw "No .exe files found in apps/desktop/release" }
+          foreach ($exe in $exeFiles) {
+            Write-Host "Found installer: $($exe.FullName) ($($exe.Length / 1MB) MB)"
+          }
+          $nsisInstaller = $exeFiles | Where-Object { $_.Name -match "SteelChaddar.*Setup.*\.exe$" -or $_.Name -match "install.*\.exe$" }
+          if ($nsisInstaller) {
+            Write-Host "NSIS installer verified: $($nsisInstaller.Name)"
+          } else {
+            Write-Host "WARNING: Could not identify NSIS installer. All .exe files:"
+            $exeFiles | ForEach-Object { Write-Host "  $($_.Name)" }
+          }
+          Write-Host "Installer verification: PASS"
 
       - name: Upload Installer
         uses: actions/upload-artifact@v4
@@ -66,10 +140,19 @@ jobs:
           name: SteelChaddar-POS-Windows
           path: artifact
 
+      - name: Find and verify NSIS installer
+        shell: bash
+        run: |
+          echo "=== Release directory contents ==="
+          find artifact -type f -name "*.exe" 2>/dev/null || echo "No .exe files found"
+          echo ""
+          echo "=== All files in artifact ==="
+          find artifact -type f 2>/dev/null | head -50
+
       - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
-          files: artifact/SteelChaddar POS Setup*.exe
+          files: artifact/**/*.exe
           draft: false
           prerelease: false
           generate_release_notes: true
