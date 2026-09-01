@@ -36,25 +36,6 @@ function getUserDataPath(): string {
   return app.getPath('userData');
 }
 
-function findNodeExecutable(): string {
-  if (app.isPackaged) {
-    const resourcesPath = process.resourcesPath;
-    const possiblePaths = [
-      path.join(resourcesPath, 'node.exe'),
-      path.join(resourcesPath, 'bin', 'node.exe'),
-      path.join(resourcesPath, 'node', 'bin', 'node.exe'),
-    ];
-    for (const p of possiblePaths) {
-      if (fs.existsSync(p)) {
-        log.info(`Found bundled Node at: ${p}`);
-        return p;
-      }
-    }
-    log.warn('No bundled Node found');
-  }
-  return process.execPath;
-}
-
 // ─── Port allocation ──────────────────────────────────────────────────────────
 async function findFreePort(start: number, end: number): Promise<number> {
   const net = await import('net');
@@ -134,17 +115,20 @@ async function startApiServer(apiPort: number): Promise<ServerProcess> {
     SESSION_SECRET: `steelcoil-desktop-${app.getPath('userData')}`,
     DESKTOP_MODE: 'true',
     ALLOWED_ORIGIN: '*',
+    INITIAL_ADMIN_PASSWORD: 'SteelCoil2026!',
   };
 
-  const nodeExe = findNodeExecutable();
   const apiScriptPath = path.join(apiDistPath, 'main.js');
-  log.info(`Node executable: ${nodeExe}`);
   log.info(`API script path: ${apiScriptPath}`);
   log.info(`API dist path: ${apiDistPath}`);
-  log.info(`API node_modules: ${path.join(apiDistPath, 'node_modules')}`);
 
-  const apiProc = spawn(nodeExe, [apiScriptPath], {
-    env: apiEnv,
+  const apiEnvWithElectronRun: NodeJS.ProcessEnv = {
+    ...apiEnv,
+    ELECTRON_RUN_AS_NODE: '1',
+  };
+
+  const apiProc = spawn(process.execPath, [apiScriptPath], {
+    env: apiEnvWithElectronRun,
     cwd: apiDistPath,
     stdio: ['ignore', 'pipe', 'pipe'],
     detached: false,
@@ -178,7 +162,7 @@ async function startApiServer(apiPort: number): Promise<ServerProcess> {
 // ─── Start Web server ─────────────────────────────────────────────────────────
 async function startWebServer(webPort: number, apiUrl: string): Promise<ServerProcess> {
   const webPath = getResourcePath('web');
-  const nextServerPath = path.join(webPath, '.next', 'standalone', 'server.js');
+  const nextServerPath = path.join(webPath, '.next', 'standalone', 'apps', 'web', 'server.js');
 
   log.info(`Starting Next.js server on port ${webPort}...`);
   log.info(`Next.js standalone path: ${nextServerPath}`);
@@ -188,10 +172,10 @@ async function startWebServer(webPort: number, apiUrl: string): Promise<ServerPr
     NODE_ENV: 'production',
     PORT: String(webPort),
     NEXT_PUBLIC_API_URL: apiUrl,
+    ELECTRON_RUN_AS_NODE: '1',
   };
 
-  const nodeExe = findNodeExecutable();
-  const webProc = spawn(nodeExe, [nextServerPath], {
+  const webProc = spawn(process.execPath, [nextServerPath], {
     env: webEnv,
     stdio: ['ignore', 'pipe', 'pipe'],
     detached: false,

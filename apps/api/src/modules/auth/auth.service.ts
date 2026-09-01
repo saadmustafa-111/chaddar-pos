@@ -5,7 +5,7 @@ import {
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-import * as argon2 from 'argon2';
+import * as bcrypt from 'bcryptjs';
 import { ConfigService } from '@nestjs/config';
 import { AdminSettings } from './entities/admin-settings.entity';
 import { LoginDto } from './dto/login.dto';
@@ -42,7 +42,7 @@ export class AuthService implements OnModuleInit {
       );
     }
 
-    const passwordHash = await argon2.hash(initialPassword);
+    const passwordHash = await bcrypt.hash(initialPassword, 10);
 
     const admin = this.adminRepository.create({
       passwordHash,
@@ -58,9 +58,9 @@ export class AuthService implements OnModuleInit {
       throw new UnauthorizedException('Invalid password');
     }
 
-    const isPasswordValid = await argon2.verify(
-      admin.passwordHash,
+    const isPasswordValid = await bcrypt.compare(
       loginDto.password,
+      admin.passwordHash,
     );
 
     if (!isPasswordValid) {
@@ -79,9 +79,9 @@ export class AuthService implements OnModuleInit {
       throw new UnauthorizedException('Invalid password');
     }
 
-    const isCurrentPasswordValid = await argon2.verify(
-      admin.passwordHash,
+    const isCurrentPasswordValid = await bcrypt.compare(
       changePasswordDto.currentPassword,
+      admin.passwordHash,
     );
 
     if (!isCurrentPasswordValid) {
@@ -92,7 +92,7 @@ export class AuthService implements OnModuleInit {
       throw new UnauthorizedException('New passwords do not match');
     }
 
-    const newPasswordHash = await argon2.hash(changePasswordDto.newPassword);
+    const newPasswordHash = await bcrypt.hash(changePasswordDto.newPassword, 10);
 
     admin.passwordHash = newPasswordHash;
     await this.adminRepository.save(admin);

@@ -60,9 +60,7 @@
     ],
     "asar": true,
     "asarUnpack": [
-      "resources/api/**/node_modules/better-sqlite3/**/*",
-      "resources/api/**/node_modules/argon2/**/*",
-      "resources/api/**/node_modules/bcrypt/**/*"
+      "resources/api/**/node_modules/better-sqlite3/**/*"
     ],
     "win": {
       "target": [

@@ -19,6 +19,7 @@ import { DashboardModule } from './modules/dashboard/dashboard.module';
 import { AttachmentsModule } from './modules/attachments/attachments.module';
 import { OtherItemsModule } from './modules/other-items/other-items.module';
 import { ExpensesModule } from './modules/expenses/expenses.module';
+import { CurrentMarketRatesModule } from './modules/current-market-rates/current-market-rates.module';
 
 @Module({
   imports: [
@@ -40,6 +41,7 @@ import { ExpensesModule } from './modules/expenses/expenses.module';
     CustomersModule,
     BusinessProfileModule,
     InventoryModule,
+    CurrentMarketRatesModule,
     DashboardModule,
     AttachmentsModule,
     OtherItemsModule,
