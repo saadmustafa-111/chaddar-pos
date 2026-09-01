@@ -127,138 +127,21 @@ jobs:
         run: |
           $exePath = (Get-ChildItem "apps/desktop/release/win-unpacked" -Filter "*.exe" -Recurse -File | Where-Object { $_.Name -notmatch "Uninstall" } | Select-Object -First 1).FullName
           $apiPath = "$((Get-Location).Path)/apps/desktop/release/win-unpacked/resources/api"
-
-          $env:ELECTRON_RUN_AS_NODE = "1"
-          $env:NODE_ENV = "production"
-          $env:PORT = "4444"
-
-          $modules = @(
-            "@nestjs/core",
-            "@nestjs/common",
-            "@nestjs/platform-express",
-            "typeorm",
-            "better-sqlite3",
-            "bcryptjs",
-            "reflect-metadata",
-            "express-session"
-          )
-
-          foreach ($mod in $modules) {
-            $testCode = "try { require.resolve('$mod'); console.log('OK') } catch(e) { console.error('FAIL: $mod - ' + e.message); process.exit(1) }"
-            $result = & $exePath -e $testCode 2>&1
-            if ($LASTEXITCODE -ne 0 -or $result -match "FAIL") {
-              throw "FAILED to require '$mod' in packaged context. Output: $result"
-            }
-            Write-Host "require.resolve('$mod'): OK"
-          }
-          Write-Host "All critical modules resolvable in packaged context: PASS"
+          & "$PSScriptRoot/../../apps/desktop/scripts/test-critical-modules.ps1" -ExePath $exePath -ApiPath $apiPath
 
       - name: Hard FAIL test - better-sqlite3 SQLite SELECT 1
         shell: pwsh
         run: |
           $exePath = (Get-ChildItem "apps/desktop/release/win-unpacked" -Filter "*.exe" -Recurse -File | Where-Object { $_.Name -notmatch "Uninstall" } | Select-Object -First 1).FullName
           $apiPath = "$((Get-Location).Path)/apps/desktop/release/win-unpacked/resources/api"
-
-          $env:ELECTRON_RUN_AS_NODE = "1"
-          $env:NODE_ENV = "production"
-
-          $testCode = @"
-process.chdir('$($apiPath.replace('\', '/')');
-try {
-  const Database = require('better-sqlite3');
-  const db = new Database(':memory:');
-  const result = db.prepare('SELECT 1 as value').get();
-  db.close();
-  if (result.value === 1) {
-    console.log('SQLite SELECT 1: OK');
-  } else {
-    console.error('SQLite SELECT 1: unexpected result', result);
-    process.exit(1);
-  }
-} catch(e) {
-  console.error('SQLite test FAILED:', e.message);
-  process.exit(1);
-}
-"@
-          $result = & $exePath -e $testCode 2>&1
-          if ($LASTEXITCODE -ne 0) {
-            throw "better-sqlite3 SQLite test FAILED. Exit code: $LASTEXITCODE. Output: $result"
-          }
-          if ($result -match "FAILED") {
-            throw "better-sqlite3 SQLite test reported failure: $result"
-          }
-          Write-Host "better-sqlite3 SQLite SELECT 1: PASS"
+          & "$PSScriptRoot/../../apps/desktop/scripts/test-sqlite-select1.ps1" -ExePath $exePath -ApiPath $apiPath
 
       - name: Hard FAIL test - API bootstrap and health endpoint
         shell: pwsh
         run: |
           $exePath = (Get-ChildItem "apps/desktop/release/win-unpacked" -Filter "*.exe" -Recurse -File | Where-Object { $_.Name -notmatch "Uninstall" } | Select-Object -First 1).FullName
           $apiPath = "$((Get-Location).Path)/apps/desktop/release/win-unpacked/resources/api"
-          $apiMain = "$apiPath/main.js"
-          $dbPath = "$env:TEMP\steelcoil_test.db"
-          $attachPath = "$env:TEMP\steelcoil_test_attachments"
-
-          $env:ELECTRON_RUN_AS_NODE = "1"
-          $env:NODE_ENV = "production"
-          $env:PORT = "4555"
-          $env:DATABASE_PATH = $dbPath
-          $env:ATTACHMENTS_DIR = $attachPath
-          $env:UPLOADS_BASE_URL = "http://127.0.0.1:4555/uploads"
-          $env:SESSION_SECRET = "test-secret"
-          $env:DESKTOP_MODE = "true"
-          $env:ALLOWED_ORIGIN = "*"
-          $env:INITIAL_ADMIN_PASSWORD = "TestPass123!"
-
-          if (!(Test-Path $attachPath)) { New-Item -ItemType Directory -Path $attachPath -Force | Out-Null }
-
-          Write-Host "Starting API: $exePath $apiMain"
-          Write-Host "PORT=$env:PORT DATABASE_PATH=$dbPath"
-
-          $proc = Start-Process -FilePath $exePath -ArgumentList $apiMain -EnvironmentVariables $env -PassThru -NoNewWindow -RedirectStandardOutput "$env:TEMP\api_stdout.log" -RedirectStandardError "$env:TEMP\api_stderr.log"
-
-          $healthOk = $false
-          $maxWait = 30000
-          $interval = 500
-          $elapsed = 0
-
-          while ($elapsed -lt $maxWait) {
-            Start-Sleep -Milliseconds $interval
-            $elapsed += $interval
-
-            if ($proc.HasExited) {
-              $exitCode = $proc.ExitCode
-              $stderr = Get-Content "$env:TEMP\api_stderr.log" -Raw -ErrorAction SilentlyContinue
-              $stdout = Get-Content "$env:TEMP\api_stdout.log" -Raw -ErrorAction SilentlyContinue
-              Stop-Process $proc.Id -Force -ErrorAction SilentlyContinue
-              throw "API process exited prematurely. Exit code: $exitCode. Stdout: $stdout. Stderr: $stderr"
-            }
-
-            try {
-              $resp = Invoke-WebRequest -Uri "http://127.0.0.1:4555/api/v1/health" -UseBasicParsing -TimeoutSec 2 -ErrorAction SilentlyContinue
-              if ($resp.StatusCode -eq 200) {
-                $healthOk = $true
-                Write-Host "Health endpoint responded: $($resp.StatusCode)"
-                break
-              }
-            } catch {
-              Write-Host "Health check attempt $('{0:N0}' -f ($elapsed / 1000))s - still waiting..."
-            }
-          }
-
-          $stderr = Get-Content "$env:TEMP\api_stderr.log" -Raw -ErrorAction SilentlyContinue
-          $stdout = Get-Content "$env:TEMP\api_stdout.log" -Raw -ErrorAction SilentlyContinue
-
-          if (!$healthOk) {
-            Stop-Process $proc.Id -Force -ErrorAction SilentlyContinue
-            Write-Host "API Stdout: $stdout"
-            Write-Host "API Stderr: $stderr"
-            throw "API health endpoint did not respond within ${maxWait}ms. Stdout: $stdout. Stderr: $stderr"
-          }
-
-          Stop-Process $proc.Id -Force -ErrorAction SilentlyContinue
-          Remove-Item $dbPath -ErrorAction SilentlyContinue
-          Remove-Item $attachPath -Recurse -ErrorAction SilentlyContinue
-          Write-Host "API bootstrap and health endpoint test: PASS"
+          & "$PSScriptRoot/../../apps/desktop/scripts/test-api-health.ps1" -ExePath $exePath -ApiPath $apiPath
 
       - name: Verify NSIS installer was created
         shell: pwsh
