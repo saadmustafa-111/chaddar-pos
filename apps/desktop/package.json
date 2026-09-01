@@ -1,6 +1,6 @@
 {
   "name": "desktop",
-  "version": "1.0.9",
+  "version": "1.0.10",
   "description": "SteelCoil POS Desktop Application",
   "main": "dist/main/index.js",
   "author": "SteelCoil",
