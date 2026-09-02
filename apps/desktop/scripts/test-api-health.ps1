@@ -36,7 +36,7 @@ Write-Host "PORT=$env:PORT DATABASE_PATH=$dbPath"
 $stdoutLog = "$env:TEMP\api_health_stdout.log"
 $stderrLog = "$env:TEMP\api_health_stderr.log"
 
-$proc = Start-Process -FilePath $ExePath -ArgumentList $apiMain -EnvironmentVariables $env -PassThru -NoNewWindow -RedirectStandardOutput $stdoutLog -RedirectStandardError $stderrLog
+$proc = Start-Process -FilePath $ExePath -ArgumentList $apiMain -WorkingDirectory $ApiPath -EnvironmentVariables $env -PassThru -NoNewWindow -RedirectStandardOutput $stdoutLog -RedirectStandardError $stderrLog
 
 $healthOk = $false
 $maxWait = 30000

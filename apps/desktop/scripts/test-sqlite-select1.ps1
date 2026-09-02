@@ -17,6 +17,18 @@ Write-Host "Executable: $($exeFile.FullName) ($($exeFile.Length) bytes)"
 
 $apiDirUnix = $ApiPath -replace '\\', '/'
 
+Write-Host "`n=== Electron Node smoke test ==="
+$smokeCode = "console.log('ELECTRON_NODE_OK'); console.log('cwd:', process.cwd()); process.exit(0);"
+$smokeFile = [System.IO.Path]::GetTempFileName() + ".js"
+$utf8NoBom = New-Object System.Text.UTF8Encoding $false
+[System.IO.File]::WriteAllText($smokeFile, $smokeCode, $utf8NoBom)
+$smokeOutput = & $ExePath $smokeFile 2>&1
+$smokeExit = $LASTEXITCODE
+Write-Host "Smoke exit: $smokeExit, Output: $smokeOutput"
+Remove-Item $smokeFile -Force -ErrorAction SilentlyContinue
+if ($smokeExit -ne 0) { throw "Electron smoke failed. Exit: $smokeExit" }
+Write-Host "Electron Node smoke: PASS"
+
 Write-Host "`n=== Testing: better-sqlite3 SQLite SELECT 1 ==="
 
 $testCode = @"
@@ -25,7 +37,7 @@ const { createRequire } = require('module');
 const apiRequire = createRequire('$apiDirUnix/main.js');
 
 try {
-  const Database = require('better-sqlite3');
+  const Database = apiRequire('better-sqlite3');
   console.log('better-sqlite3 loaded: OK');
   const db = new Database(':memory:');
   console.log('Database opened: OK');

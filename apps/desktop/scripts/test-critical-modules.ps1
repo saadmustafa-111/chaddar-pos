@@ -18,6 +18,37 @@ $exeFile = Get-Item $ExePath -ErrorAction SilentlyContinue
 if (!$exeFile) { throw "Executable not found: $ExePath" }
 Write-Host "Executable: $($exeFile.FullName) ($($exeFile.Length) bytes)"
 
+Write-Host "`n=== STEP 0: Electron Node smoke test ==="
+$smokeCode = @"
+process.chdir('$apiDirUnix');
+console.log('ELECTRON_NODE_OK');
+console.log('process.version:', process.version);
+console.log('process.versions.electron:', process.versions.electron);
+console.log('process.versions.node:', process.versions.node);
+console.log('process.execPath:', process.execPath);
+console.log('process.cwd():', process.cwd());
+console.log('__dirname:', __dirname);
+process.exit(0);
+"@
+
+$smokeFile = [System.IO.Path]::GetTempFileName() + ".js"
+$utf8NoBom = New-Object System.Text.UTF8Encoding $false
+[System.IO.File]::WriteAllText($smokeFile, $smokeCode, $utf8NoBom)
+
+$smokeOutput = & $ExePath $smokeFile 2>&1
+$smokeExit = $LASTEXITCODE
+
+Write-Host "Smoke exit code: $smokeExit"
+Write-Host "Smoke output:"
+Write-Host $smokeOutput
+
+Remove-Item $smokeFile -Force -ErrorAction SilentlyContinue
+
+if ($smokeExit -ne 0 -or $smokeOutput -notmatch "ELECTRON_NODE_OK") {
+    throw "Electron Node smoke test FAILED. Exit: $smokeExit. Output: $smokeOutput"
+}
+Write-Host "Electron Node smoke test: PASS"
+
 $modules = @(
   "@nestjs/core",
   "@nestjs/common",

@@ -39,7 +39,7 @@
         "filter": ["**/*", "!**/*.map", "!**/*.tsbuildinfo"]
       },
       {
-        "from": "../api/node_modules",
+        "from": "../api/prod-bundle/node_modules",
         "to": "api/node_modules",
         "filter": ["**/*", "!**/dev/**", "!**/test/**", "!**/.*", "!**/*.spec.*", "!**/*.map"]
       },
