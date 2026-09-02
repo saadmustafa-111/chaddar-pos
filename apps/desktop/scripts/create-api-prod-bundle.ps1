@@ -16,7 +16,7 @@ Write-Host "apiDist: $apiDist"
 Write-Host "apiBundle: $apiBundle"
 
 if (Test-Path $apiBundle) { Remove-Item -LiteralPath $apiBundle -Recurse -Force }
-New-Item -ItemType Directory -LiteralPath $apiBundle -Force | Out-Null
+New-Item -ItemType Directory -Path $apiBundle -Force | Out-Null
 
 Write-Host "`n=== DIAGNOSTIC: API dist contents ==="
 Get-ChildItem -LiteralPath $apiDist -Recurse -Depth 3 -ErrorAction SilentlyContinue | Select-Object -ExpandProperty FullName | Select-Object -First 50 | ForEach-Object { Write-Host "  $_" }
