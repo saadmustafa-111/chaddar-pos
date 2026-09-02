@@ -7,7 +7,7 @@
   "license": "UNLICENSED",
   "private": true,
   "scripts": {
-    "build": "tsc && node scripts/copy-resources.js",
+    "build": "tsc",
     "start": "electron .",
     "dist": "electron-builder"
   },
