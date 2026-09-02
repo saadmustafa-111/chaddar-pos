@@ -83,10 +83,18 @@ jobs:
           $webProc = $null
 
           try {
+            $apiMainJs = Join-Path $apiBase "dist\main.js"
             Write-Host "Starting packaged API on port $apiPort..."
+            Write-Host "Executable: $electronExe"
+            Write-Host "Main: $apiMainJs"
+            Write-Host "WorkingDirectory: $apiBase"
+            Write-Host "PORT: $apiPort"
+            Write-Host "NODE_ENV: production"
+            Write-Host "ELECTRON_RUN_AS_NODE: 1"
+
             $apipsi = New-Object System.Diagnostics.ProcessStartInfo
             $apipsi.FileName = $electronExe
-            $apipsi.Arguments = "resources\api\dist\main.js"
+            $apipsi.Arguments = $apiMainJs
             $apipsi.WorkingDirectory = $apiBase
             $apipsi.UseShellExecute = $false
             $apipsi.RedirectStandardOutput = $true
@@ -108,7 +116,26 @@ jobs:
             $apiReady = $false
             for ($i = 0; $i -lt 60; $i++) {
               Start-Sleep 1
-              if ($apiProc.HasExited) { throw "API process exited early with code $($apiProc.ExitCode)" }
+              if ($apiProc.HasExited) {
+                $stdout = ""
+                $stderr = ""
+                try { $stdout = $apiProc.StandardOutput.ReadToEnd() } catch {}
+                try { $stderr = $apiProc.StandardError.ReadToEnd() } catch {}
+                Write-Host "=== PACKAGED API FAILURE ==="
+                Write-Host "Executable: $electronExe"
+                Write-Host "Main: $apiMainJs"
+                Write-Host "WorkingDirectory: $apiBase"
+                Write-Host "PORT: $apiPort"
+                Write-Host "NODE_ENV: production"
+                Write-Host "ELECTRON_RUN_AS_NODE: 1"
+                Write-Host "ExitCode: $($apiProc.ExitCode)"
+                Write-Host "=== STDOUT ==="
+                Write-Host $stdout
+                Write-Host "=== STDERR ==="
+                Write-Host $stderr
+                Write-Host "=============================="
+                throw "API process exited early with code $($apiProc.ExitCode)"
+              }
               try {
                 $resp = Invoke-WebRequest -Uri $apiHealth -TimeoutSec 2 -UseBasicParsing -ErrorAction SilentlyContinue
                 if ($resp.StatusCode -eq 200 -or $resp.StatusCode -eq 201) {
@@ -120,11 +147,20 @@ jobs:
             }
             if (-not $apiReady) { throw "API did not respond at $apiHealth after 60s" }
 
+            $webServerJs = Join-Path $webBase ".next\standalone\apps\web\server.js"
+            $webWorkDir = Join-Path $webBase ".next\standalone\apps\web"
             Write-Host "Starting packaged Next.js web on port $webPort..."
+            Write-Host "Executable: $electronExe"
+            Write-Host "Main: $webServerJs"
+            Write-Host "WorkingDirectory: $webWorkDir"
+            Write-Host "PORT: $webPort"
+            Write-Host "NODE_ENV: production"
+            Write-Host "ELECTRON_RUN_AS_NODE: 1"
+
             $webpsi = New-Object System.Diagnostics.ProcessStartInfo
             $webpsi.FileName = $electronExe
-            $webpsi.Arguments = "resources\web\.next\standalone\apps\web\server.js"
-            $webpsi.WorkingDirectory = Join-Path $webBase ".next\standalone\apps\web"
+            $webpsi.Arguments = $webServerJs
+            $webpsi.WorkingDirectory = $webWorkDir
             $webpsi.UseShellExecute = $false
             $webpsi.RedirectStandardOutput = $true
             $webpsi.RedirectStandardError = $true
@@ -139,7 +175,26 @@ jobs:
             $webReady = $false
             for ($i = 0; $i -lt 60; $i++) {
               Start-Sleep 1
-              if ($webProc.HasExited) { throw "Web process exited early with code $($webProc.ExitCode)" }
+              if ($webProc.HasExited) {
+                $stdout = ""
+                $stderr = ""
+                try { $stdout = $webProc.StandardOutput.ReadToEnd() } catch {}
+                try { $stderr = $webProc.StandardError.ReadToEnd() } catch {}
+                Write-Host "=== PACKAGED WEB FAILURE ==="
+                Write-Host "Executable: $electronExe"
+                Write-Host "Main: $webServerJs"
+                Write-Host "WorkingDirectory: $webWorkDir"
+                Write-Host "PORT: $webPort"
+                Write-Host "NODE_ENV: production"
+                Write-Host "ELECTRON_RUN_AS_NODE: 1"
+                Write-Host "ExitCode: $($webProc.ExitCode)"
+                Write-Host "=== STDOUT ==="
+                Write-Host $stdout
+                Write-Host "=== STDERR ==="
+                Write-Host $stderr
+                Write-Host "=============================="
+                throw "Web process exited early with code $($webProc.ExitCode)"
+              }
               try {
                 $resp = Invoke-WebRequest -Uri $webUrl -TimeoutSec 2 -UseBasicParsing -ErrorAction SilentlyContinue
                 if ($resp.StatusCode -eq 200) {
