@@ -125,18 +125,49 @@ Write-Host "Stage package.json confirmed EXISTS before copy"
 Copy-Item -Path $stagePkg -Destination (Join-Path $apiBundle "package.json") -Force
 Write-Host "stage/package.json → prod-bundle/package.json: PASS"
 
-Write-Host "`n=== Step 9: Copy stage/node_modules into prod-bundle using robocopy /SL (dereference symlinks) ==="
+Write-Host "`n=== Step 9: Copy stage/node_modules into prod-bundle (dereference all junctions/symlinks) ==="
 $bundleNodeModules = Join-Path $apiBundle "node_modules"
 if (Test-Path $bundleNodeModules) { Remove-Item -Path $bundleNodeModules -Recurse -Force }
 New-Item -ItemType Directory -Path $bundleNodeModules -Force | Out-Null
 
-Write-Host "Robocopy copying staging node_modules to prod-bundle with /SL (copy symlinks as files)..."
-$robocopyResult = robocopy $stageNodeModules $bundleNodeModules /SL /E /NFL /NDL /NJH /NJS /NC /NS /NP
-Write-Host "robocopy exit code: $LASTEXITCODE"
-if ($LASTEXITCODE -ge 8) { throw "robocopy failed to copy node_modules" }
-Write-Host "node_modules copied via robocopy: PASS"
+function Copy-DirectoryContentsPhysical($src, $dst) {
+    $items = Get-ChildItem -Path $src -Force
+    foreach ($item in $items) {
+        $srcPath = $item.FullName
+        $dstPath = Join-Path $dst $item.Name
+        if ($item.Attributes -match "ReparsePoint") {
+            if ($item.LinkType -eq "Junction" -or $item.LinkType -eq "SymbolicLink") {
+                $target = $item.Target
+                Write-Host "  Following junction/symlink: $($item.Name) -> $target"
+                $targetItem = Get-Item $target -Force -ErrorAction SilentlyContinue
+                if ($targetItem) {
+                    if ($targetItem.PSIsContainer) {
+                        if (!(Test-Path $dstPath)) { New-Item -ItemType Directory -Path $dstPath -Force | Out-Null }
+                        Copy-DirectoryContentsPhysical $target $dstPath
+                    } else {
+                        Copy-Item -Path $srcPath -Destination $dstPath -Force
+                    }
+                } else {
+                    Write-Host "  WARNING: Junction target inaccessible: $target"
+                    Copy-Item -Path $srcPath -Destination $dstPath -Force
+                }
+                continue
+            }
+        }
+        if ($item.PSIsContainer) {
+            if (!(Test-Path $dstPath)) { New-Item -ItemType Directory -Path $dstPath -Force | Out-Null }
+            Copy-DirectoryContentsPhysical $srcPath $dstPath
+        } else {
+            Copy-Item -Path $srcPath -Destination $dstPath -Force
+        }
+    }
+}
 
-Write-Host "`n=== Step 9b: Verify copied @nestjs/core is PHYSICAL (not a symlink) ==="
+Write-Host "Physically copying staging node_modules to prod-bundle (following junctions)..."
+Copy-DirectoryContentsPhysical $stageNodeModules $bundleNodeModules
+Write-Host "Physical copy complete"
+
+Write-Host "`n=== Step 10: Verify copied @nestjs/core is PHYSICAL (not a symlink) ==="
 $nestCoreBundle = Join-Path $bundleNodeModules "@nestjs\core"
 if (Test-Path $nestCoreBundle) {
     $item = Get-Item $nestCoreBundle -Force
@@ -150,7 +181,7 @@ if (Test-Path $nestCoreBundle) {
     throw "prod-bundle/node_modules/@nestjs/core missing after copy"
 }
 
-Write-Host "`n=== Step 9c: Verify .pnpm does NOT exist in prod-bundle node_modules ==="
+Write-Host "`n=== Step 11: Verify .pnpm does NOT exist in prod-bundle node_modules ==="
 $bundlePnpm = Join-Path $bundleNodeModules ".pnpm"
 if (Test-Path $bundlePnpm) {
     Write-Host "WARNING: prod-bundle/node_modules/.pnpm exists - this means hoisted structure is wrong"
@@ -159,20 +190,42 @@ if (Test-Path $bundlePnpm) {
     Write-Host ".pnpm not in prod-bundle/node_modules: PASS (hoisted structure NOT used)"
 }
 
-Write-Host "`n=== Step 9d: Verify require.resolve works inside prod-bundle ==="
+Write-Host "`n=== Step 12: Verify require.resolve works inside prod-bundle for ALL critical packages ==="
 Push-Location $apiBundle
-try {
-    $resolvedCore = node -e "console.log(require.resolve('@nestjs/core'))"
-    Write-Host "require.resolve('@nestjs/core'): $resolvedCore"
-    if ($resolvedCore -notlike "*prod-bundle*") {
-        throw "CRITICAL: @nestjs/core resolved outside prod-bundle: $resolvedCore"
+$criticalPkgs = @(
+    "@nestjs/core",
+    "@nestjs/common",
+    "@nestjs/platform-express",
+    "@nestjs/config",
+    "@nestjs/typeorm",
+    "typeorm",
+    "express-session",
+    "reflect-metadata",
+    "rxjs",
+    "better-sqlite3",
+    "bcryptjs"
+)
+$allPassed = $true
+foreach ($pkg in $criticalPkgs) {
+    try {
+        $resolved = node -e "console.log(require.resolve('$pkg'))"
+        Write-Host "  require.resolve('$pkg'): $resolved"
+        if ($resolved -notlike "*prod-bundle*") {
+            Write-Host "  ERROR: $pkg resolved OUTSIDE prod-bundle!"
+            $allPassed = $false
+        }
+    } catch {
+        Write-Host "  FAIL: require.resolve('$pkg') threw: $_"
+        $allPassed = $false
     }
-    Write-Host "require.resolve inside prod-bundle: PASS"
-} finally {
-    Pop-Location
 }
+Pop-Location
+if (-not $allPassed) {
+    throw "One or more critical packages resolved outside prod-bundle"
+}
+Write-Host "All critical packages resolve inside prod-bundle: PASS"
 
-Write-Host "`n=== Step 10: Cleanup staging ==="
+Write-Host "`n=== Step 13: Cleanup staging ==="
 if (Test-Path $stageRoot) { Remove-Item -Path $stageRoot -Recurse -Force }
 Write-Host "Staging cleaned up"
 
