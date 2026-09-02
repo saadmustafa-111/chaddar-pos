@@ -35,8 +35,7 @@
     "extraResources": [
       {
         "from": "../api/prod-bundle",
-        "to": "api",
-        "filter": ["**/*"]
+        "to": "api"
       },
       {
         "from": "../web/.next",
