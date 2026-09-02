@@ -9,8 +9,8 @@ Write-Host "Creating API production bundle at $apiBundle"
 if (Test-Path $apiBundle) { Remove-Item $apiBundle -Recurse -Force }
 New-Item -ItemType Directory -Path $apiBundle -Force | Out-Null
 
-Write-Host "Copying dist/ to bundle..."
-Copy-Item -Path $apiDist -Destination "$apiBundle/dist" -Recurse -Force
+Write-Host "Copying dist/ contents into bundle root..."
+Get-ChildItem -Path $apiDist | Copy-Item -Destination $apiBundle -Recurse -Force
 
 Write-Host "Creating bundle package.json..."
 $pkg = Get-Content $apiPkg -Raw | ConvertFrom-Json
@@ -19,7 +19,7 @@ $deployPkg = @{
     version = $pkg.version
     main = $pkg.main
     dependencies = $pkg.dependencies
-    scripts = @{ start = "node dist/main" }
+    scripts = @{ start = "node main" }
 }
 $deployPkgJson = $deployPkg | ConvertTo-Json -Depth 10
 [System.IO.File]::WriteAllText("$apiBundle/package.json", $deployPkgJson)
@@ -46,10 +46,16 @@ try {
     }
 
     Write-Host "Verifying critical bundle files..."
-    if (!(Test-Path "$apiBundle/dist/main.js")) { throw "Bundle missing dist/main.js" }
+    if (!(Test-Path "$apiBundle/main.js")) { throw "Bundle missing main.js at root" }
+    if (!(Test-Path "$apiBundle/app.module.js")) { throw "Bundle missing app.module.js" }
+    if (!(Test-Path "$apiBundle/modules")) { throw "Bundle missing modules directory" }
     if (!(Test-Path "$apiBundle/node_modules/@nestjs/core")) { throw "Bundle missing @nestjs/core" }
     if (!(Test-Path "$apiBundle/node_modules/better-sqlite3")) { throw "Bundle missing better-sqlite3" }
     Write-Host "Critical bundle files verified."
+
+    Write-Host "`nBundle structure (first 3 levels):"
+    Get-ChildItem $apiBundle -Depth 2 | ForEach-Object { Write-Host "  $($_.Name)" }
+    Get-ChildItem "$apiBundle/node_modules" -Depth 1 | Select-Object -First 10 | ForEach-Object { Write-Host "  node_modules/$($_.Name)" }
 
 } finally {
     Pop-Location

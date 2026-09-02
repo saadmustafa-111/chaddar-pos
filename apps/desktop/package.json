@@ -34,14 +34,9 @@
     ],
     "extraResources": [
       {
-        "from": "../api/dist",
+        "from": "../api/prod-bundle",
         "to": "api",
-        "filter": ["**/*", "!**/*.map", "!**/*.tsbuildinfo"]
-      },
-      {
-        "from": "../api/prod-bundle/node_modules",
-        "to": "api/node_modules",
-        "filter": ["**/*", "!**/dev/**", "!**/test/**", "!**/.*", "!**/*.spec.*", "!**/*.map"]
+        "filter": ["**/*", "!**/dev/**", "!**/test/**", "!**/.*", "!**/*.spec.*", "!**/*.map", "!**/*.tsbuildinfo"]
       },
       {
         "from": "../web/.next",
