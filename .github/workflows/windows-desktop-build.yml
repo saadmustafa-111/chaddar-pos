@@ -125,23 +125,29 @@ jobs:
       - name: Hard FAIL test - require all critical modules in packaged context
         shell: pwsh
         run: |
+          $script = Join-Path $env:GITHUB_WORKSPACE "apps\desktop\scripts\test-critical-modules.ps1"
+          if (!(Test-Path $script)) { throw "Missing CI script: $script" }
           $exePath = (Get-ChildItem "apps/desktop/release/win-unpacked" -Filter "*.exe" -Recurse -File | Where-Object { $_.Name -notmatch "Uninstall" } | Select-Object -First 1).FullName
-          $apiPath = "$((Get-Location).Path)/apps/desktop/release/win-unpacked/resources/api"
-          & "$PSScriptRoot/../../apps/desktop/scripts/test-critical-modules.ps1" -ExePath $exePath -ApiPath $apiPath
+          $apiPath = Join-Path $env:GITHUB_WORKSPACE "apps\desktop\release\win-unpacked\resources\api"
+          & $script -ExePath $exePath -ApiPath $apiPath
 
       - name: Hard FAIL test - better-sqlite3 SQLite SELECT 1
         shell: pwsh
         run: |
+          $script = Join-Path $env:GITHUB_WORKSPACE "apps\desktop\scripts\test-sqlite-select1.ps1"
+          if (!(Test-Path $script)) { throw "Missing CI script: $script" }
           $exePath = (Get-ChildItem "apps/desktop/release/win-unpacked" -Filter "*.exe" -Recurse -File | Where-Object { $_.Name -notmatch "Uninstall" } | Select-Object -First 1).FullName
-          $apiPath = "$((Get-Location).Path)/apps/desktop/release/win-unpacked/resources/api"
-          & "$PSScriptRoot/../../apps/desktop/scripts/test-sqlite-select1.ps1" -ExePath $exePath -ApiPath $apiPath
+          $apiPath = Join-Path $env:GITHUB_WORKSPACE "apps\desktop\release\win-unpacked\resources\api"
+          & $script -ExePath $exePath -ApiPath $apiPath
 
       - name: Hard FAIL test - API bootstrap and health endpoint
         shell: pwsh
         run: |
+          $script = Join-Path $env:GITHUB_WORKSPACE "apps\desktop\scripts\test-api-health.ps1"
+          if (!(Test-Path $script)) { throw "Missing CI script: $script" }
           $exePath = (Get-ChildItem "apps/desktop/release/win-unpacked" -Filter "*.exe" -Recurse -File | Where-Object { $_.Name -notmatch "Uninstall" } | Select-Object -First 1).FullName
-          $apiPath = "$((Get-Location).Path)/apps/desktop/release/win-unpacked/resources/api"
-          & "$PSScriptRoot/../../apps/desktop/scripts/test-api-health.ps1" -ExePath $exePath -ApiPath $apiPath
+          $apiPath = Join-Path $env:GITHUB_WORKSPACE "apps\desktop\release\win-unpacked\resources\api"
+          & $script -ExePath $exePath -ApiPath $apiPath
 
       - name: Verify NSIS installer was created
         shell: pwsh
