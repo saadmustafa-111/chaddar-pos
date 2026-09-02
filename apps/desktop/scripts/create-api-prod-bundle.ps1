@@ -89,6 +89,24 @@ if ($brokenLinks) {
 }
 Write-Host "No broken symlinks in staging: PASS"
 
+Write-Host "`n=== Step 5c: Inspect staging symlink structure ==="
+Write-Host "Checking @nestjs/core link type in staging:"
+$nestCoreStage = Join-Path $stageNodeModules "@nestjs\core"
+if (Test-Path $nestCoreStage) {
+    $item = Get-Item $nestCoreStage -Force
+    Write-Host "  LinkType: $($item.LinkType)"
+    Write-Host "  Target: $($item.Target)"
+} else {
+    Write-Host "  @nestjs/core NOT FOUND in staging node_modules"
+}
+Write-Host "Checking node_modules/.pnpm exists:"
+$pnpmDir = Join-Path $stageNodeModules ".pnpm"
+Write-Host "  .pnpm exists: $(Test-Path $pnpmDir)"
+if (Test-Path $pnpmDir) {
+    $pnpmCount = (Get-ChildItem $pnpmDir -Force -ErrorAction SilentlyContinue | Measure-Object).Count
+    Write-Host "  .pnpm entries: $pnpmCount"
+}
+
 Write-Host "`n=== Step 6: Create fresh apps/api/prod-bundle ==="
 New-Item -ItemType Directory -Path $apiBundle -Force | Out-Null
 Write-Host "prod-bundle directory created"
@@ -107,12 +125,52 @@ Write-Host "Stage package.json confirmed EXISTS before copy"
 Copy-Item -Path $stagePkg -Destination (Join-Path $apiBundle "package.json") -Force
 Write-Host "stage/package.json → prod-bundle/package.json: PASS"
 
-Write-Host "`n=== Step 9: Copy stage/node_modules into prod-bundle ==="
+Write-Host "`n=== Step 9: Copy stage/node_modules into prod-bundle using robocopy /SL (dereference symlinks) ==="
 $bundleNodeModules = Join-Path $apiBundle "node_modules"
 if (Test-Path $bundleNodeModules) { Remove-Item -Path $bundleNodeModules -Recurse -Force }
-Copy-Item -Path $stageNodeModules -Destination $bundleNodeModules -Recurse -Force
-if (!(Test-Path $bundleNodeModules)) { throw "Bundle missing node_modules after copy from staging" }
-Write-Host "stage/node_modules → prod-bundle/node_modules: PASS"
+New-Item -ItemType Directory -Path $bundleNodeModules -Force | Out-Null
+
+Write-Host "Robocopy copying staging node_modules to prod-bundle with /SL (copy symlinks as files)..."
+$robocopyResult = robocopy $stageNodeModules $bundleNodeModules /SL /E /NFL /NDL /NJH /NJS /NC /NS /NP
+Write-Host "robocopy exit code: $LASTEXITCODE"
+if ($LASTEXITCODE -ge 8) { throw "robocopy failed to copy node_modules" }
+Write-Host "node_modules copied via robocopy: PASS"
+
+Write-Host "`n=== Step 9b: Verify copied @nestjs/core is PHYSICAL (not a symlink) ==="
+$nestCoreBundle = Join-Path $bundleNodeModules "@nestjs\core"
+if (Test-Path $nestCoreBundle) {
+    $item = Get-Item $nestCoreBundle -Force
+    Write-Host "  @nestjs/core LinkType: $($item.LinkType)"
+    if ($item.LinkType -eq "SymbolicLink" -or $item.LinkType -eq "Junction") {
+        Write-Host "  PROBLEM: @nestjs/core is still a $($item.LinkType) pointing to: $($item.Target)"
+        throw "prod-bundle/node_modules/@nestjs/core is a symlink/junction - NOT physically self-contained"
+    }
+    Write-Host "  @nestjs/core is PHYSICAL directory: PASS"
+} else {
+    throw "prod-bundle/node_modules/@nestjs/core missing after copy"
+}
+
+Write-Host "`n=== Step 9c: Verify .pnpm does NOT exist in prod-bundle node_modules ==="
+$bundlePnpm = Join-Path $bundleNodeModules ".pnpm"
+if (Test-Path $bundlePnpm) {
+    Write-Host "WARNING: prod-bundle/node_modules/.pnpm exists - this means hoisted structure is wrong"
+    Write-Host "Contents: $(Get-ChildItem $bundlePnpm -Force -ErrorAction SilentlyContinue | Measure-Object | Select-Object -ExpandProperty Count) entries"
+} else {
+    Write-Host ".pnpm not in prod-bundle/node_modules: PASS (hoisted structure NOT used)"
+}
+
+Write-Host "`n=== Step 9d: Verify require.resolve works inside prod-bundle ==="
+Push-Location $apiBundle
+try {
+    $resolvedCore = node -e "console.log(require.resolve('@nestjs/core'))"
+    Write-Host "require.resolve('@nestjs/core'): $resolvedCore"
+    if ($resolvedCore -notlike "*prod-bundle*") {
+        throw "CRITICAL: @nestjs/core resolved outside prod-bundle: $resolvedCore"
+    }
+    Write-Host "require.resolve inside prod-bundle: PASS"
+} finally {
+    Pop-Location
+}
 
 Write-Host "`n=== Step 10: Cleanup staging ==="
 if (Test-Path $stageRoot) { Remove-Item -Path $stageRoot -Recurse -Force }

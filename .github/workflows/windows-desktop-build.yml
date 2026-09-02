@@ -60,19 +60,35 @@ jobs:
           Write-Host "main.js: $(Test-Path (Join-Path $apiBundle 'main.js'))"
           Write-Host "package.json: $(Test-Path (Join-Path $apiBundle 'package.json'))"
           Write-Host "node_modules: $(Test-Path (Join-Path $apiBundle 'node_modules'))"
-          Write-Host "@nestjs/core: $(Test-Path (Join-Path $apiBundle 'node_modules\@nestjs\core'))"
           $nestCore = Join-Path $apiBundle "node_modules\@nestjs\core"
+          Write-Host "@nestjs/core: $(Test-Path $nestCore)"
           if (Test-Path $nestCore) {
             $item = Get-Item $nestCore -Force
             Write-Host "LinkType: $($item.LinkType)"
             if ($item.LinkType -eq 'SymbolicLink' -or $item.LinkType -eq 'Junction') {
               Write-Host "Target: $($item.Target)"
+              Write-Host "WARNING: @nestjs/core is a symlink - will NOT be portable!"
             }
           }
           Write-Host "Contents of node_modules:"
           Get-ChildItem (Join-Path $apiBundle "node_modules") -Force -ErrorAction SilentlyContinue | Select-Object Name, LinkType, Target | Format-Table -AutoSize
           Write-Host "Contents of @nestjs scope:"
           Get-ChildItem (Join-Path $apiBundle "node_modules\@nestjs") -Force -ErrorAction SilentlyContinue | Select-Object Name | Format-Table -AutoSize
+          Write-Host "node_modules/.pnpm exists: $(Test-Path (Join-Path $apiBundle 'node_modules\.pnpm'))"
+          Write-Host "Verifying require.resolve inside prod-bundle:"
+          Push-Location $apiBundle
+          try {
+            $resolved = node -e "console.log(require.resolve('@nestjs/core'))"
+            Write-Host "Resolved @nestjs/core: $resolved"
+            if ($resolved -notlike "*prod-bundle*") {
+              Write-Host "ERROR: Resolved path is OUTSIDE prod-bundle!"
+            } else {
+              Write-Host "require.resolve inside prod-bundle: PASS"
+            }
+          } catch {
+            Write-Host "require.resolve FAILED: $_"
+          }
+          Pop-Location
 
       - name: Verify API build output exists
         run: |
