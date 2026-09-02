@@ -9,8 +9,29 @@ Write-Host "Creating API production bundle at $apiBundle"
 if (Test-Path $apiBundle) { Remove-Item $apiBundle -Recurse -Force }
 New-Item -ItemType Directory -Path $apiBundle -Force | Out-Null
 
-Write-Host "Copying dist/ contents into bundle root..."
-Get-ChildItem -Path $apiDist | Copy-Item -Destination $apiBundle -Recurse -Force
+Write-Host "=== DIAGNOSTIC: API dist path: $apiDist"
+Write-Host "=== DIAGNOSTIC: API dist contents:"
+Get-ChildItem $apiDist -Recurse -Depth 3 | Select-Object -ExpandProperty FullName | Select-Object -First 50 | ForEach-Object { Write-Host "  $_" }
+
+Write-Host "`n=== DIAGNOSTIC: Looking for main.js in dist..."
+$mainCandidates = Get-ChildItem $apiDist -Recurse -Filter "main.js" -File -ErrorAction SilentlyContinue
+Write-Host "Found $($mainCandidates.Count) main.js file(s):"
+$mainCandidates | ForEach-Object { Write-Host "  $($_.FullName)" }
+
+if ($mainCandidates.Count -eq 0) {
+    throw "No compiled main.js found under API dist. Build may have failed."
+}
+
+Write-Host "`nCopying dist contents into bundle root..."
+Copy-Item -Path "$apiDist\*" -Destination $apiBundle -Recurse -Force
+
+Write-Host "`n=== DIAGNOSTIC: Bundle immediately after dist copy:"
+Get-ChildItem $apiBundle -Recurse -Depth 3 | Select-Object -ExpandProperty FullName | Select-Object -First 50 | ForEach-Object { Write-Host "  $_" }
+
+if (!(Test-Path (Join-Path $apiBundle "main.js"))) {
+    throw "dist copy failed: main.js was not copied to bundle root"
+}
+Write-Host "main.js confirmed at bundle root after copy."
 
 Write-Host "Creating bundle package.json..."
 $pkg = Get-Content $apiPkg -Raw | ConvertFrom-Json
@@ -35,6 +56,9 @@ try {
     pnpm install --prod --ignore-scripts 2>&1 | ForEach-Object { Write-Host "pnpm: $_" }
     if ($LASTEXITCODE -ne 0) { throw "pnpm install --prod failed in bundle" }
 
+    Write-Host "`n=== DIAGNOSTIC: Bundle after pnpm install:"
+    Get-ChildItem $apiBundle -Depth 2 | Select-Object -ExpandProperty FullName | Select-Object -First 30 | ForEach-Object { Write-Host "  $_" }
+
     Write-Host "Verifying no broken symlinks..."
     $brokenLinks = Get-ChildItem -Path "$apiBundle/node_modules" -Recurse -Force -ErrorAction SilentlyContinue | Where-Object { $_.Attributes -match "ReparsePoint" -and !(Test-Path $_.FullName) }
     if ($brokenLinks) {
@@ -45,17 +69,26 @@ try {
         Write-Host "No broken symlinks found - bundle is clean"
     }
 
-    Write-Host "Verifying critical bundle files..."
-    if (!(Test-Path "$apiBundle/main.js")) { throw "Bundle missing main.js at root" }
-    if (!(Test-Path "$apiBundle/app.module.js")) { throw "Bundle missing app.module.js" }
-    if (!(Test-Path "$apiBundle/modules")) { throw "Bundle missing modules directory" }
-    if (!(Test-Path "$apiBundle/node_modules/@nestjs/core")) { throw "Bundle missing @nestjs/core" }
-    if (!(Test-Path "$apiBundle/node_modules/better-sqlite3")) { throw "Bundle missing better-sqlite3" }
-    Write-Host "Critical bundle files verified."
+    Write-Host "`n=== DIAGNOSTIC: Hard-checking critical files after pnpm install ==="
+    $checks = @(
+        "$apiBundle/main.js",
+        "$apiBundle/app.module.js",
+        "$apiBundle/modules",
+        "$apiBundle/node_modules/@nestjs/core",
+        "$apiBundle/node_modules/better-sqlite3",
+        "$apiBundle/package.json"
+    )
+    foreach ($check in $checks) {
+        if (Test-Path $check) {
+            Write-Host "EXISTS: $check"
+        } else {
+            throw "MISSING after pnpm install: $check"
+        }
+    }
+    Write-Host "All critical bundle files verified after pnpm install."
 
-    Write-Host "`nBundle structure (first 3 levels):"
+    Write-Host "`nBundle structure (first 2 levels):"
     Get-ChildItem $apiBundle -Depth 2 | ForEach-Object { Write-Host "  $($_.Name)" }
-    Get-ChildItem "$apiBundle/node_modules" -Depth 1 | Select-Object -First 10 | ForEach-Object { Write-Host "  node_modules/$($_.Name)" }
 
 } finally {
     Pop-Location
