@@ -162,7 +162,7 @@ async function startApiServer(apiPort: number): Promise<ServerProcess> {
 // ─── Start Web server ─────────────────────────────────────────────────────────
 async function startWebServer(webPort: number, apiUrl: string): Promise<ServerProcess> {
   const webPath = getResourcePath('web');
-  const nextServerPath = path.join(webPath, '.next', 'standalone', 'apps', 'web', 'server.js');
+  const nextServerPath = path.join(webPath, '.next', 'standalone', 'server.js');
 
   log.info(`Starting Next.js server on port ${webPort}...`);
   log.info(`Next.js standalone path: ${nextServerPath}`);

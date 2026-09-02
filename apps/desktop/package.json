@@ -34,13 +34,13 @@
     ],
     "extraResources": [
       {
-        "from": "../api/prod-bundle",
+        "from": "../api/deploy",
         "to": "api"
       },
       {
-        "from": "../web/.next",
-        "to": "web/.next",
-        "filter": ["**/*", "!**/dev/**", "!**/cache/**"]
+        "from": "../web/.next/standalone",
+        "to": "web",
+        "filter": ["**/*"]
       },
       {
         "from": "../web/public",

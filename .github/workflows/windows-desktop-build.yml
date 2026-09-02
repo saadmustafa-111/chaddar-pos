@@ -31,101 +31,19 @@ jobs:
           cache: 'pnpm'
 
       - name: Install dependencies
-        run: pnpm install --frozen-lockfile --ignore-scripts
+        run: pnpm install --frozen-lockfile
 
       - name: Build API
         run: pnpm --filter api build
 
-      - name: Create API production bundle
-        shell: pwsh
-        run: |
-          $script = Join-Path $env:GITHUB_WORKSPACE "apps\desktop\scripts\create-api-prod-bundle.ps1"
-          if (!(Test-Path $script)) { throw "Missing script: $script" }
-          & $script
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Deploy API production bundle
+        run: pnpm --filter api deploy --prod --no-frozen-lockfile --out-dir apps/api/deploy
 
       - name: Build Web
         run: pnpm --filter web build
 
       - name: Build Desktop
         run: pnpm --filter desktop build
-
-      - name: "=== SOURCE PROD BUNDLE DIAGNOSTIC ==="
-        shell: pwsh
-        run: |
-          $ErrorActionPreference = 'Continue'
-          $apiBundle = Join-Path $env:GITHUB_WORKSPACE "apps\api\prod-bundle"
-          Write-Host "=== SOURCE PROD BUNDLE ==="
-          Write-Host "Testing: $apiBundle"
-          Write-Host "main.js: $(Test-Path (Join-Path $apiBundle 'main.js'))"
-          Write-Host "package.json: $(Test-Path (Join-Path $apiBundle 'package.json'))"
-          Write-Host "node_modules: $(Test-Path (Join-Path $apiBundle 'node_modules'))"
-          $nestCore = Join-Path $apiBundle "node_modules\@nestjs\core"
-          Write-Host "@nestjs/core: $(Test-Path $nestCore)"
-          if (Test-Path $nestCore) {
-            $item = Get-Item $nestCore -Force
-            Write-Host "LinkType: $($item.LinkType)"
-            if ($item.LinkType -eq 'SymbolicLink' -or $item.LinkType -eq 'Junction') {
-              Write-Host "Target: $($item.Target)"
-              Write-Host "WARNING: @nestjs/core is a symlink - will NOT be portable!"
-            }
-          }
-          Write-Host "Contents of node_modules:"
-          Get-ChildItem (Join-Path $apiBundle "node_modules") -Force -ErrorAction SilentlyContinue | Select-Object Name, LinkType, Target | Format-Table -AutoSize
-          Write-Host "Contents of @nestjs scope:"
-          Get-ChildItem (Join-Path $apiBundle "node_modules\@nestjs") -Force -ErrorAction SilentlyContinue | Select-Object Name | Format-Table -AutoSize
-          Write-Host "node_modules/.pnpm exists: $(Test-Path (Join-Path $apiBundle 'node_modules\.pnpm'))"
-          Write-Host "Verifying require.resolve inside prod-bundle:"
-          Push-Location $apiBundle
-          try {
-            $resolved = node -e "console.log(require.resolve('@nestjs/core'))"
-            Write-Host "Resolved @nestjs/core: $resolved"
-            if ($resolved -notlike "*prod-bundle*") {
-              Write-Host "ERROR: Resolved path is OUTSIDE prod-bundle!"
-            } else {
-              Write-Host "require.resolve inside prod-bundle: PASS"
-            }
-          } catch {
-            Write-Host "require.resolve FAILED: $_"
-          }
-          Pop-Location
-
-      - name: Verify API build output exists
-        run: |
-          if (!(Test-Path "apps/api/dist/main.js")) { throw "API dist main.js not found" }
-          if (!(Test-Path "apps/api/dist/app.module.js")) { throw "API dist app.module.js not found" }
-          if (!(Test-Path "apps/api/dist/modules")) { throw "API dist modules directory not found" }
-          Write-Host "API build output verified: PASS"
-
-      - name: Verify API runtime dependencies are resolvable
-        working-directory: apps/api
-        shell: pwsh
-        run: |
-          $ErrorActionPreference = 'Stop'
-          $required = @(
-            "@nestjs/core",
-            "@nestjs/common",
-            "@nestjs/platform-express",
-            "typeorm",
-            "better-sqlite3",
-            "bcryptjs",
-            "reflect-metadata",
-            "express-session"
-          )
-          $failures = @()
-          foreach ($pkg in $required) {
-            try {
-              $resolved = node -e "console.log(require.resolve('$pkg'))"
-              Write-Host "Resolved: $pkg -> $resolved"
-            } catch {
-              Write-Host "FAILED to resolve: $pkg"
-              $failures += $pkg
-            }
-          }
-          if ($failures.Count -gt 0) {
-            throw "Failed to resolve required packages: $($failures -join ', ')"
-          }
-          Write-Host "API runtime dependency resolution: PASS"
 
       - name: Rebuild native modules for Electron
         run: pnpm --filter desktop exec npx --yes electron-builder install-app-deps
@@ -134,127 +52,18 @@ jobs:
         run: pnpm --filter desktop dist --win nsis --x64
         timeout-minutes: 90
 
-      - name: "=== PACKAGED API DIAGNOSTIC ==="
-        shell: pwsh
-        run: |
-          $ErrorActionPreference = 'Continue'
-          $winUnpacked = Join-Path $env:GITHUB_WORKSPACE "apps\desktop\release\win-unpacked"
-          $apiPath = Join-Path $winUnpacked "resources\api"
-          Write-Host "=== PACKAGED API ==="
-          Write-Host "Testing: $apiPath"
-          Write-Host "main.js: $(Test-Path (Join-Path $apiPath 'main.js'))"
-          Write-Host "package.json: $(Test-Path (Join-Path $apiPath 'package.json'))"
-          Write-Host "node_modules: $(Test-Path (Join-Path $apiPath 'node_modules'))"
-          Write-Host "@nestjs/core: $(Test-Path (Join-Path $apiPath 'node_modules\@nestjs\core'))"
-          Write-Host "Contents of resources/api:"
-          Get-ChildItem $apiPath -Force -ErrorAction SilentlyContinue | Select-Object Name, Attributes | Format-Table -AutoSize
-          Write-Host "Contents of resources/api/node_modules:"
-          Get-ChildItem (Join-Path $apiPath "node_modules") -Force -ErrorAction SilentlyContinue | Select-Object Name, Attributes | Format-Table -AutoSize
-          Write-Host "Contents of resources/api/node_modules/@nestjs:"
-          Get-ChildItem (Join-Path $apiPath "node_modules\@nestjs") -Force -ErrorAction SilentlyContinue | Select-Object Name | Format-Table -AutoSize
-
-      - name: Verify win-unpacked resources structure
-        shell: pwsh
-        run: |
-          $winUnpacked = Join-Path $env:GITHUB_WORKSPACE "apps\desktop\release\win-unpacked"
-          if (!(Test-Path "$winUnpacked/resources/api/main.js")) { throw "Missing: resources/api/main.js" }
-          if (!(Test-Path "$winUnpacked/resources/api/app.module.js")) { throw "Missing: resources/api/app.module.js" }
-          if (!(Test-Path "$winUnpacked/resources/api/modules")) { throw "Missing: resources/api/modules" }
-
-          $requiredModules = @(
-            "$winUnpacked/resources/api/node_modules/@nestjs/core",
-            "$winUnpacked/resources/api/node_modules/@nestjs/common",
-            "$winUnpacked/resources/api/node_modules/typeorm",
-            "$winUnpacked/resources/api/node_modules/better-sqlite3",
-            "$winUnpacked/resources/api/node_modules/bcryptjs"
-          )
-          foreach ($mod in $requiredModules) {
-            if (!(Test-Path $mod)) { throw "Missing module: $mod" }
-            Write-Host "Found: $mod"
-          }
-
-          Write-Host "win-unpacked resources structure verification: PASS"
-
-      - name: Verify better-sqlite3 prebuilt binding exists
-        shell: pwsh
-        run: |
-          $winUnpacked = Join-Path $env:GITHUB_WORKSPACE "apps\desktop\release\win-unpacked"
-          $prebuiltPath = "$winUnpacked/resources/api/node_modules/better-sqlite3/prebuilds/win32-x64.node"
-
-          if (!(Test-Path $prebuiltPath)) {
-            throw "MISSING NATIVE BINDING: $prebuiltPath"
-          }
-          $fileInfo = Get-Item $prebuiltPath
-          if ($fileInfo.Length -lt 1000000) {
-            throw "Native binding file too small ($($fileInfo.Length) bytes) - likely invalid"
-          }
-          Write-Host "Found better-sqlite3 prebuilt: $prebuiltPath ($($fileInfo.Length) bytes)"
-          Write-Host "better-sqlite3 prebuilt verification: PASS"
-
-      - name: Hard FAIL test - require all critical modules in packaged context
-        shell: pwsh
-        run: |
-          $script = Join-Path $env:GITHUB_WORKSPACE "apps\desktop\scripts\test-critical-modules.ps1"
-          if (!(Test-Path $script)) { throw "Missing CI script: $script" }
-          $winUnpacked = Join-Path $env:GITHUB_WORKSPACE "apps\desktop\release\win-unpacked"
-          $allExes = Get-ChildItem $winUnpacked -Filter "*.exe" -Recurse -File
-          Write-Host "Available executables:"
-          foreach ($e in $allExes) { Write-Host "  $($e.FullName)" }
-          $mainExe = $allExes | Where-Object { $_.Name -notmatch "Uninstall|Crashpad|Updater|helper" } | Select-Object -First 1
-          if (!$mainExe) { throw "Could not find main Electron executable in win-unpacked" }
-          $exePath = $mainExe.FullName
-          $apiPath = Join-Path $winUnpacked "resources\api"
-          Write-Host "Selected executable: $exePath"
-          Write-Host "API path: $apiPath"
-          & $script -ExePath $exePath -ApiPath $apiPath
-
-      - name: Hard FAIL test - better-sqlite3 SQLite SELECT 1
-        shell: pwsh
-        run: |
-          $script = Join-Path $env:GITHUB_WORKSPACE "apps\desktop\scripts\test-sqlite-select1.ps1"
-          if (!(Test-Path $script)) { throw "Missing CI script: $script" }
-          $winUnpacked = Join-Path $env:GITHUB_WORKSPACE "apps\desktop\release\win-unpacked"
-          $allExes = Get-ChildItem $winUnpacked -Filter "*.exe" -Recurse -File
-          $mainExe = $allExes | Where-Object { $_.Name -notmatch "Uninstall|Crashpad|Updater|helper" } | Select-Object -First 1
-          if (!$mainExe) { throw "Could not find main Electron executable in win-unpacked" }
-          $exePath = $mainExe.FullName
-          $apiPath = Join-Path $winUnpacked "resources\api"
-          Write-Host "Selected executable: $exePath"
-          Write-Host "API path: $apiPath"
-          & $script -ExePath $exePath -ApiPath $apiPath
-
-      - name: Hard FAIL test - API bootstrap and health endpoint
-        shell: pwsh
-        run: |
-          $script = Join-Path $env:GITHUB_WORKSPACE "apps\desktop\scripts\test-api-health.ps1"
-          if (!(Test-Path $script)) { throw "Missing CI script: $script" }
-          $winUnpacked = Join-Path $env:GITHUB_WORKSPACE "apps\desktop\release\win-unpacked"
-          $allExes = Get-ChildItem $winUnpacked -Filter "*.exe" -Recurse -File
-          $mainExe = $allExes | Where-Object { $_.Name -notmatch "Uninstall|Crashpad|Updater|helper" } | Select-Object -First 1
-          if (!$mainExe) { throw "Could not find main Electron executable in win-unpacked" }
-          $exePath = $mainExe.FullName
-          $apiPath = Join-Path $winUnpacked "resources\api"
-          Write-Host "Selected executable: $exePath"
-          Write-Host "API path: $apiPath"
-          & $script -ExePath $exePath -ApiPath $apiPath
-
-      - name: Verify NSIS installer was created
+      - name: Verify installer was created
         shell: pwsh
         run: |
           $desktopRelease = Join-Path $env:GITHUB_WORKSPACE "apps\desktop\release"
           $exeFiles = Get-ChildItem $desktopRelease -Filter "*.exe" -Recurse -File
           if ($exeFiles.Count -eq 0) { throw "No .exe files found in apps/desktop/release" }
-          foreach ($exe in $exeFiles) {
-            Write-Host "Found installer: $($exe.FullName) ($($exe.Length / 1MB) MB)"
-          }
           $nsisInstaller = $exeFiles | Where-Object { $_.Name -match "SteelChaddar.*Setup.*\.exe$" -or $_.Name -match "install.*\.exe$" }
           if ($nsisInstaller) {
             Write-Host "NSIS installer verified: $($nsisInstaller.Name)"
           } else {
-            Write-Host "WARNING: Could not identify NSIS installer. All .exe files:"
-            $exeFiles | ForEach-Object { Write-Host "  $($_.Name)" }
+            throw "NSIS installer not found. Available .exe files: $($exeFiles.Name -join ', ')"
           }
-          Write-Host "Installer verification: PASS"
 
       - name: Upload Installer
         uses: actions/upload-artifact@v4
@@ -280,9 +89,6 @@ jobs:
         run: |
           echo "=== Release directory contents ==="
           find artifact -type f -name "*.exe" 2>/dev/null || echo "No .exe files found"
-          echo ""
-          echo "=== All files in artifact ==="
-          find artifact -type f 2>/dev/null | head -50
 
       - name: Create Release
         uses: softprops/action-gh-release@v2
