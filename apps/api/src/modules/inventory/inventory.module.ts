@@ -7,6 +7,7 @@ import { PriceCategory } from '../price-categories/entities/price-category.entit
 import { InventoryMovement } from '../inventory-movements/entities/inventory-movement.entity';
 import { InventoryService } from './inventory.service';
 import { InventoryController } from './inventory.controller';
+import { CurrentMarketRatesModule } from '../current-market-rates/current-market-rates.module';
 
 @Module({
   imports: [
@@ -17,6 +18,7 @@ import { InventoryController } from './inventory.controller';
       PriceCategory,
       InventoryMovement,
     ]),
+    CurrentMarketRatesModule,
   ],
   controllers: [InventoryController],
   providers: [InventoryService],

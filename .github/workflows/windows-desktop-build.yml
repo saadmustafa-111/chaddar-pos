@@ -40,16 +40,7 @@ jobs:
         run: pnpm --filter api deploy --legacy --ignore-scripts --prod apps/api/deploy
 
       - name: Copy API build output to deploy
-        shell: pwsh
-        run: |
-          Copy-Item -Path apps/api/dist -Destination apps/api/deploy/dist -Recurse -Force
-          Get-ChildItem -Path apps/api/deploy/node_modules -Recurse -Force -ErrorAction SilentlyContinue | Where-Object { $_.LinkType -eq 'Junction' } | ForEach-Object {
-            $link = $_.FullName
-            $target = $_.Target
-            if (-not (Test-Path $target)) { return }
-            Remove-Item -Path $link -Force -Recurse -ErrorAction SilentlyContinue
-            & robocopy /E /NJH /NJS "$target" "$link" *.* 2>&1 | Out-Null
-          }
+        run: robocopy apps/api/dist apps/api/deploy/dist /E /IS /IT
 
       - name: Build Web
         run: pnpm --filter web build
