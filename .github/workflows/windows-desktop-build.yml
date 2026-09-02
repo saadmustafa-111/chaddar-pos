@@ -52,6 +52,115 @@ jobs:
       - name: Rebuild native modules for Electron
         run: pnpm --filter desktop exec npx --yes electron-builder install-app-deps
 
+      - name: Runtime smoke test - packaged API and web
+        shell: pwsh
+        timeout-minutes: 5
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $electronExe = Join-Path $env:GITHUB_WORKSPACE "apps\desktop\node_modules\electron\dist\electron.exe"
+          $apiDir = Join-Path $env:GITHUB_WORKSPACE "apps\api\deploy"
+          $webDir = Join-Path $env:GITHUB_WORKSPACE "apps\web\.next\standalone"
+
+          $apiPort = 4555
+          $webPort = 3555
+          $apiUrl = "http://127.0.0.1:$apiPort"
+          $webUrl = "http://127.0.0.1:$webPort"
+          $apiHealth = "$apiUrl/api/v1/health"
+
+          $userDataPath = "$env:TEMP\chaddar-smoke-$PID"
+          $dbDir = "$userDataPath\data"
+          $dbPath = "$dbDir\steelcoil.db"
+          New-Item -ItemType Directory -Path $dbDir -Force | Out-Null
+
+          $apiEnv = @{
+            NODE_ENV = 'production'
+            ELECTRON_RUN_AS_NODE = '1'
+            PORT = $apiPort
+            DATABASE_PATH = $dbPath
+            ATTACHMENTS_DIR = "$dbDir\attachments"
+            UPLOADS_BASE_URL = "$apiUrl/uploads"
+            SESSION_SECRET = "smoke-test-$PID"
+            DESKTOP_MODE = 'true'
+            ALLOWED_ORIGIN = '*'
+            INITIAL_ADMIN_PASSWORD = 'SteelCoil2026!'
+          }
+
+          $webEnv = @{
+            NODE_ENV = 'production'
+            ELECTRON_RUN_AS_NODE = '1'
+            PORT = $webPort
+            NEXT_PUBLIC_API_URL = $apiUrl
+          }
+
+          $apiProc = $null
+          $webProc = $null
+          $apiOut = "$env:TEMP\api-smoke-$PID.log"
+          $webOut = "$env:TEMP\web-smoke-$PID.log"
+
+          try {
+            Write-Host "Starting API on port $apiPort..."
+            $apipsi = New-Object System.Diagnostics.ProcessStartInfo
+            $apipsi.FileName = $electronExe
+            $apipsi.Arguments = "apps\api\deploy\dist\main.js"
+            $apipsi.EnvironmentVariables = $apiEnv
+            $apipsi.WorkingDirectory = $apiDir
+            $apipsi.UseShellExecute = $false
+            $apipsi.RedirectStandardOutput = $true
+            $apipsi.RedirectStandardError = $true
+            $apipsi.CreateNoWindow = $true
+            $apiProc = [System.Diagnostics.Process]::Start($apipsi)
+            $null = $apiProc.OutputStream.ReadToEnd()
+
+            Write-Host "Waiting for API health at $apiHealth ..."
+            $apiReady = $false
+            for ($i = 0; $i -lt 60; $i++) {
+              Start-Sleep 1
+              try {
+                $resp = Invoke-WebRequest -Uri $apiHealth -TimeoutSec 2 -UseBasicParsing -ErrorAction SilentlyContinue
+                if ($resp.StatusCode -eq 200 -or $resp.StatusCode -eq 201) {
+                  $apiReady = $true
+                  Write-Host "API health OK (attempt $($i+1))"
+                  break
+                }
+              } catch {}
+            }
+            if (-not $apiReady) { throw "API did not respond at $apiHealth after 60s" }
+
+            Write-Host "Starting Next.js web on port $webPort..."
+            $webpsi = New-Object System.Diagnostics.ProcessStartInfo
+            $webpsi.FileName = $electronExe
+            $webpsi.Arguments = "apps\web\.next\standalone\apps\web\server.js"
+            $webpsi.EnvironmentVariables = $webEnv
+            $webpsi.WorkingDirectory = "$webDir\apps\web"
+            $webpsi.UseShellExecute = $false
+            $webpsi.RedirectStandardOutput = $true
+            $webpsi.RedirectStandardError = $true
+            $webpsi.CreateNoWindow = $true
+            $webProc = [System.Diagnostics.Process]::Start($webpsi)
+            $null = $webProc.OutputStream.ReadToEnd()
+
+            Write-Host "Waiting for web HTTP 200 at $webUrl ..."
+            $webReady = $false
+            for ($i = 0; $i -lt 60; $i++) {
+              Start-Sleep 1
+              try {
+                $resp = Invoke-WebRequest -Uri $webUrl -TimeoutSec 2 -UseBasicParsing -ErrorAction SilentlyContinue
+                if ($resp.StatusCode -eq 200) {
+                  $webReady = $true
+                  Write-Host "Web HTTP 200 OK (attempt $($i+1))"
+                  break
+                }
+              } catch {}
+            }
+            if (-not $webReady) { throw "Web did not respond at $webUrl after 60s" }
+
+            Write-Host "SMOKE TEST PASSED"
+          } finally {
+            if ($apiProc -and -not $apiProc.HasExited) { Stop-Process -Id $apiProc.Id -Force -ErrorAction SilentlyContinue }
+            if ($webProc -and -not $webProc.HasExited) { Stop-Process -Id $webProc.Id -Force -ErrorAction SilentlyContinue }
+            Remove-Item $userDataPath -Recurse -Force -ErrorAction SilentlyContinue
+          }
+
       - name: Electron Builder
         run: pnpm --filter desktop dist --win nsis --x64
         timeout-minutes: 90

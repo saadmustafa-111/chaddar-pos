@@ -118,7 +118,7 @@ async function startApiServer(apiPort: number): Promise<ServerProcess> {
     INITIAL_ADMIN_PASSWORD: 'SteelCoil2026!',
   };
 
-  const apiScriptPath = path.join(apiDistPath, 'main.js');
+  const apiScriptPath = path.join(apiDistPath, 'dist', 'main.js');
   log.info(`API script path: ${apiScriptPath}`);
   log.info(`API dist path: ${apiDistPath}`);
 
@@ -162,7 +162,7 @@ async function startApiServer(apiPort: number): Promise<ServerProcess> {
 // ─── Start Web server ─────────────────────────────────────────────────────────
 async function startWebServer(webPort: number, apiUrl: string): Promise<ServerProcess> {
   const webPath = getResourcePath('web');
-  const nextServerPath = path.join(webPath, '.next', 'standalone', 'server.js');
+  const nextServerPath = path.join(webPath, '.next', 'standalone', 'apps', 'web', 'server.js');
 
   log.info(`Starting Next.js server on port ${webPort}...`);
   log.info(`Next.js standalone path: ${nextServerPath}`);
