@@ -72,44 +72,30 @@ jobs:
           $dbPath = "$dbDir\steelcoil.db"
           New-Item -ItemType Directory -Path $dbDir -Force | Out-Null
 
-          $apiEnv = @{
-            NODE_ENV = 'production'
-            ELECTRON_RUN_AS_NODE = '1'
-            PORT = $apiPort
-            DATABASE_PATH = $dbPath
-            ATTACHMENTS_DIR = "$dbDir\attachments"
-            UPLOADS_BASE_URL = "$apiUrl/uploads"
-            SESSION_SECRET = "smoke-test-$PID"
-            DESKTOP_MODE = 'true'
-            ALLOWED_ORIGIN = '*'
-            INITIAL_ADMIN_PASSWORD = 'SteelCoil2026!'
-          }
-
-          $webEnv = @{
-            NODE_ENV = 'production'
-            ELECTRON_RUN_AS_NODE = '1'
-            PORT = $webPort
-            NEXT_PUBLIC_API_URL = $apiUrl
-          }
-
           $apiProc = $null
           $webProc = $null
-          $apiOut = "$env:TEMP\api-smoke-$PID.log"
-          $webOut = "$env:TEMP\web-smoke-$PID.log"
 
           try {
             Write-Host "Starting API on port $apiPort..."
             $apipsi = New-Object System.Diagnostics.ProcessStartInfo
             $apipsi.FileName = $electronExe
             $apipsi.Arguments = "apps\api\deploy\dist\main.js"
-            $apipsi.EnvironmentVariables = $apiEnv
             $apipsi.WorkingDirectory = $apiDir
             $apipsi.UseShellExecute = $false
             $apipsi.RedirectStandardOutput = $true
             $apipsi.RedirectStandardError = $true
             $apipsi.CreateNoWindow = $true
+            $apipsi.EnvironmentVariables['NODE_ENV'] = 'production'
+            $apipsi.EnvironmentVariables['ELECTRON_RUN_AS_NODE'] = '1'
+            $apipsi.EnvironmentVariables['PORT'] = $apiPort
+            $apipsi.EnvironmentVariables['DATABASE_PATH'] = $dbPath
+            $apipsi.EnvironmentVariables['ATTACHMENTS_DIR'] = "$dbDir\attachments"
+            $apipsi.EnvironmentVariables['UPLOADS_BASE_URL'] = "$apiUrl/uploads"
+            $apipsi.EnvironmentVariables['SESSION_SECRET'] = "smoke-test-$PID"
+            $apipsi.EnvironmentVariables['DESKTOP_MODE'] = 'true'
+            $apipsi.EnvironmentVariables['ALLOWED_ORIGIN'] = '*'
+            $apipsi.EnvironmentVariables['INITIAL_ADMIN_PASSWORD'] = 'SteelCoil2026!'
             $apiProc = [System.Diagnostics.Process]::Start($apipsi)
-            $null = $apiProc.OutputStream.ReadToEnd()
 
             Write-Host "Waiting for API health at $apiHealth ..."
             $apiReady = $false
@@ -130,14 +116,16 @@ jobs:
             $webpsi = New-Object System.Diagnostics.ProcessStartInfo
             $webpsi.FileName = $electronExe
             $webpsi.Arguments = "apps\web\.next\standalone\apps\web\server.js"
-            $webpsi.EnvironmentVariables = $webEnv
             $webpsi.WorkingDirectory = "$webDir\apps\web"
             $webpsi.UseShellExecute = $false
             $webpsi.RedirectStandardOutput = $true
             $webpsi.RedirectStandardError = $true
             $webpsi.CreateNoWindow = $true
+            $webpsi.EnvironmentVariables['NODE_ENV'] = 'production'
+            $webpsi.EnvironmentVariables['ELECTRON_RUN_AS_NODE'] = '1'
+            $webpsi.EnvironmentVariables['PORT'] = $webPort
+            $webpsi.EnvironmentVariables['NEXT_PUBLIC_API_URL'] = $apiUrl
             $webProc = [System.Diagnostics.Process]::Start($webpsi)
-            $null = $webProc.OutputStream.ReadToEnd()
 
             Write-Host "Waiting for web HTTP 200 at $webUrl ..."
             $webReady = $false
