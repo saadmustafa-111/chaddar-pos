@@ -36,7 +36,7 @@
       {
         "from": "../api/prod-bundle",
         "to": "api",
-        "filter": ["**/*", "!**/dev/**", "!**/test/**", "!**/.*", "!**/*.spec.*", "!**/*.map", "!**/*.tsbuildinfo"]
+        "filter": ["**/*"]
       },
       {
         "from": "../web/.next",
