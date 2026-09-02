@@ -37,7 +37,11 @@ jobs:
         run: pnpm --filter api build
 
       - name: Deploy API production bundle
-        run: pnpm --filter api deploy --prod --no-frozen-lockfile --out-dir apps/api/deploy
+        run: pnpm --filter api deploy --legacy --ignore-scripts --prod apps/api/deploy
+
+      - name: Copy API build output to deploy
+        shell: pwsh
+        run: Copy-Item -Path apps/api/dist -Destination apps/api/deploy/dist -Recurse -Force
 
       - name: Build Web
         run: pnpm --filter web build
