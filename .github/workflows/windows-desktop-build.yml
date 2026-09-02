@@ -52,14 +52,21 @@ jobs:
       - name: Rebuild native modules for Electron
         run: pnpm --filter desktop exec npx --yes electron-builder install-app-deps
 
+      - name: Electron Builder
+        run: pnpm --filter desktop dist --win nsis --x64
+        timeout-minutes: 90
+
       - name: Runtime smoke test - packaged API and web
         shell: pwsh
         timeout-minutes: 5
         run: |
           $ErrorActionPreference = 'Stop'
-          $electronExe = Join-Path $env:GITHUB_WORKSPACE "apps\desktop\node_modules\electron\dist\electron.exe"
-          $apiDir = Join-Path $env:GITHUB_WORKSPACE "apps\api\deploy"
-          $webDir = Join-Path $env:GITHUB_WORKSPACE "apps\web\.next\standalone"
+          $winUnpacked = Join-Path $env:GITHUB_WORKSPACE "apps\desktop\release\win-unpacked"
+          $electronExe = Get-ChildItem $winUnpacked -Filter "*.exe" -File | Select-Object -First 1
+          if (-not $electronExe) { throw "No .exe found in $winUnpacked" }
+          $electronExe = $electronExe.FullName
+          $apiBase = Join-Path $winUnpacked "resources\api"
+          $webBase = Join-Path $winUnpacked "resources\web"
 
           $apiPort = 4555
           $webPort = 3555
@@ -76,18 +83,18 @@ jobs:
           $webProc = $null
 
           try {
-            Write-Host "Starting API on port $apiPort..."
+            Write-Host "Starting packaged API on port $apiPort..."
             $apipsi = New-Object System.Diagnostics.ProcessStartInfo
             $apipsi.FileName = $electronExe
-            $apipsi.Arguments = "apps\api\deploy\dist\main.js"
-            $apipsi.WorkingDirectory = $apiDir
+            $apipsi.Arguments = "resources\api\dist\main.js"
+            $apipsi.WorkingDirectory = $apiBase
             $apipsi.UseShellExecute = $false
             $apipsi.RedirectStandardOutput = $true
             $apipsi.RedirectStandardError = $true
             $apipsi.CreateNoWindow = $true
             $apipsi.EnvironmentVariables['NODE_ENV'] = 'production'
             $apipsi.EnvironmentVariables['ELECTRON_RUN_AS_NODE'] = '1'
-            $apipsi.EnvironmentVariables['PORT'] = $apiPort
+            $apipsi.EnvironmentVariables['PORT'] = [string]$apiPort
             $apipsi.EnvironmentVariables['DATABASE_PATH'] = $dbPath
             $apipsi.EnvironmentVariables['ATTACHMENTS_DIR'] = "$dbDir\attachments"
             $apipsi.EnvironmentVariables['UPLOADS_BASE_URL'] = "$apiUrl/uploads"
@@ -101,6 +108,7 @@ jobs:
             $apiReady = $false
             for ($i = 0; $i -lt 60; $i++) {
               Start-Sleep 1
+              if ($apiProc.HasExited) { throw "API process exited early with code $($apiProc.ExitCode)" }
               try {
                 $resp = Invoke-WebRequest -Uri $apiHealth -TimeoutSec 2 -UseBasicParsing -ErrorAction SilentlyContinue
                 if ($resp.StatusCode -eq 200 -or $resp.StatusCode -eq 201) {
@@ -112,18 +120,18 @@ jobs:
             }
             if (-not $apiReady) { throw "API did not respond at $apiHealth after 60s" }
 
-            Write-Host "Starting Next.js web on port $webPort..."
+            Write-Host "Starting packaged Next.js web on port $webPort..."
             $webpsi = New-Object System.Diagnostics.ProcessStartInfo
             $webpsi.FileName = $electronExe
-            $webpsi.Arguments = "apps\web\.next\standalone\apps\web\server.js"
-            $webpsi.WorkingDirectory = "$webDir\apps\web"
+            $webpsi.Arguments = "resources\web\.next\standalone\apps\web\server.js"
+            $webpsi.WorkingDirectory = Join-Path $webBase ".next\standalone\apps\web"
             $webpsi.UseShellExecute = $false
             $webpsi.RedirectStandardOutput = $true
             $webpsi.RedirectStandardError = $true
             $webpsi.CreateNoWindow = $true
             $webpsi.EnvironmentVariables['NODE_ENV'] = 'production'
             $webpsi.EnvironmentVariables['ELECTRON_RUN_AS_NODE'] = '1'
-            $webpsi.EnvironmentVariables['PORT'] = $webPort
+            $webpsi.EnvironmentVariables['PORT'] = [string]$webPort
             $webpsi.EnvironmentVariables['NEXT_PUBLIC_API_URL'] = $apiUrl
             $webProc = [System.Diagnostics.Process]::Start($webpsi)
 
@@ -131,6 +139,7 @@ jobs:
             $webReady = $false
             for ($i = 0; $i -lt 60; $i++) {
               Start-Sleep 1
+              if ($webProc.HasExited) { throw "Web process exited early with code $($webProc.ExitCode)" }
               try {
                 $resp = Invoke-WebRequest -Uri $webUrl -TimeoutSec 2 -UseBasicParsing -ErrorAction SilentlyContinue
                 if ($resp.StatusCode -eq 200) {
@@ -148,10 +157,6 @@ jobs:
             if ($webProc -and -not $webProc.HasExited) { Stop-Process -Id $webProc.Id -Force -ErrorAction SilentlyContinue }
             Remove-Item $userDataPath -Recurse -Force -ErrorAction SilentlyContinue
           }
-
-      - name: Electron Builder
-        run: pnpm --filter desktop dist --win nsis --x64
-        timeout-minutes: 90
 
       - name: Verify installer was created
         shell: pwsh
