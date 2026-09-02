@@ -39,53 +39,27 @@ jobs:
         run: |
           $apiBundle = "apps/api/prod-bundle"
           $apiDist = "apps/api/dist"
-          $apiPkg = "apps/api/package.json"
 
           Write-Host "Creating API production bundle at $apiBundle"
 
           if (Test-Path $apiBundle) { Remove-Item $apiBundle -Recurse -Force }
           New-Item -ItemType Directory -Path $apiBundle -Force | Out-Null
 
-          Copy-Item -Path $apiDist -Destination "$apiBundle/dist" -Recurse -Force
-          Write-Host "Copied dist to $apiBundle/dist"
+          Write-Host "Building API production bundle using pnpm deploy..."
+          pnpm --filter api deploy $apiBundle --prod 2>&1 | ForEach-Object { Write-Host "pnpm deploy: $_" }
+          if ($LASTEXITCODE -ne 0) { throw "pnpm --filter api deploy failed" }
 
-          $pkg = Get-Content $apiPkg -Raw | ConvertFrom-Json
-          $deployPkg = @{
-            name = $pkg.name
-            version = $pkg.version
-            main = $pkg.main
-            dependencies = $pkg.dependencies
-            scripts = @{ start = "node dist/main" }
-          }
-          $deployPkg | ConvertTo-Json -Depth 10 | Set-Content "$apiBundle/package.json" -Encoding UTF8
-          Write-Host "Created bundle package.json"
+          Write-Host "Verifying bundle contents..."
+          if (!(Test-Path "$apiBundle/dist/main.js")) { throw "Bundle missing dist/main.js" }
+          if (!(Test-Path "$apiBundle/node_modules")) { throw "Bundle missing node_modules" }
 
-          $bundleNpmrc = "$apiBundle/.npmrc"
-          @"
-shamefully-hoist=true
-node-linker=hoisted
-"@ | Set-Content $bundleNpmrc -Encoding UTF8
-          Write-Host "Created bundle .npmrc with hoisting"
-
-          Copy-Item "pnpm-lock.yaml" "$apiBundle/" -Force
-          Write-Host "Copied pnpm-lock.yaml to bundle"
-
-          Write-Host "Installing production dependencies in bundle..."
-          Push-Location $apiBundle
-          try {
-            pnpm install --frozen-lockfile --ignore-scripts 2>&1 | ForEach-Object { Write-Host "pnpm: $_" }
-            if ($LASTEXITCODE -ne 0) { throw "pnpm install failed in bundle" }
-
-            Write-Host "Verifying no broken symlinks in bundle..."
-            $brokenLinks = Get-ChildItem -Path "$apiBundle/node_modules" -Recurse -Force -ErrorAction SilentlyContinue | Where-Object { $_.Attributes -match "ReparsePoint" -and !(Test-Path $_.FullName) }
-            if ($brokenLinks) {
-              Write-Host "WARNING: Found $($brokenLinks.Count) broken symlinks:"
-              $brokenLinks | ForEach-Object { Write-Host "  $($_.FullName)" }
-            } else {
-              Write-Host "No broken symlinks found - bundle is clean"
-            }
-          } finally {
-            Pop-Location
+          $brokenLinks = Get-ChildItem -Path "$apiBundle/node_modules" -Recurse -Force -ErrorAction SilentlyContinue | Where-Object { $_.Attributes -match "ReparsePoint" -and !(Test-Path $_.FullName) }
+          if ($brokenLinks) {
+            Write-Host "WARNING: Found $($brokenLinks.Count) broken symlinks:"
+            $brokenLinks | ForEach-Object { Write-Host "  $($_.FullName)" }
+            throw "Bundle contains broken symlinks"
+          } else {
+            Write-Host "No broken symlinks found - bundle is clean"
           }
 
           Write-Host "API production bundle created: PASS"

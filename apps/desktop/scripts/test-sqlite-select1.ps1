@@ -3,10 +3,6 @@ param([string]$ExePath, [string]$ApiPath)
 $env:ELECTRON_RUN_AS_NODE = "1"
 $env:NODE_ENV = "production"
 
-Write-Host "=== DIAGNOSTIC: SQLite Test Environment ==="
-Write-Host "ExePath: $ExePath"
-Write-Host "ApiPath: $ApiPath"
-
 $mainJs = Join-Path $ApiPath "main.js"
 if (!(Test-Path $mainJs)) { throw "Missing main.js at: $mainJs" }
 Write-Host "main.js verified: $mainJs"
@@ -15,18 +11,30 @@ $exeFile = Get-Item $ExePath -ErrorAction SilentlyContinue
 if (!$exeFile) { throw "Executable not found: $ExePath" }
 Write-Host "Executable: $($exeFile.FullName) ($($exeFile.Length) bytes)"
 
-$apiDirUnix = $ApiPath -replace '\\', '/'
+$apiDir = $ApiPath
+$apiDirUnix = $apiDir -replace '\\', '/'
 
 Write-Host "`n=== Electron Node smoke test ==="
-$smokeCode = "console.log('ELECTRON_NODE_OK'); console.log('cwd:', process.cwd()); process.exit(0);"
+$smokeCode = @"
+process.chdir('$apiDirUnix');
+console.log('ELECTRON_NODE_OK');
+console.log('cwd:', process.cwd());
+process.exit(0);
+"@
+
 $smokeFile = [System.IO.Path]::GetTempFileName() + ".js"
 $utf8NoBom = New-Object System.Text.UTF8Encoding $false
 [System.IO.File]::WriteAllText($smokeFile, $smokeCode, $utf8NoBom)
+
 $smokeOutput = & $ExePath $smokeFile 2>&1
 $smokeExit = $LASTEXITCODE
-Write-Host "Smoke exit: $smokeExit, Output: $smokeOutput"
+Write-Host "Smoke exit: $smokeExit"
+Write-Host "Smoke output:"
+Write-Host $smokeOutput
 Remove-Item $smokeFile -Force -ErrorAction SilentlyContinue
-if ($smokeExit -ne 0) { throw "Electron smoke failed. Exit: $smokeExit" }
+if ($smokeExit -ne 0 -or $smokeOutput -notmatch "ELECTRON_NODE_OK") {
+    throw "Electron smoke test FAILED. Exit: $smokeExit. Output: $smokeOutput"
+}
 Write-Host "Electron Node smoke: PASS"
 
 Write-Host "`n=== Testing: better-sqlite3 SQLite SELECT 1 ==="

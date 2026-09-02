@@ -4,12 +4,6 @@ $env:ELECTRON_RUN_AS_NODE = "1"
 $env:NODE_ENV = "production"
 $env:PORT = [string]$Port
 
-Write-Host "=== DIAGNOSTIC: Executable and Path Info ==="
-Write-Host "ExePath: $ExePath"
-Write-Host "ApiPath: $ApiPath"
-Write-Host "Current directory: $((Get-Location).Path)"
-Write-Host "GITHUB_WORKSPACE: $env:GITHUB_WORKSPACE"
-
 $mainJs = Join-Path $ApiPath "main.js"
 if (!(Test-Path $mainJs)) { throw "Missing main.js at: $mainJs" }
 Write-Host "main.js verified: $mainJs"
@@ -17,6 +11,8 @@ Write-Host "main.js verified: $mainJs"
 $exeFile = Get-Item $ExePath -ErrorAction SilentlyContinue
 if (!$exeFile) { throw "Executable not found: $ExePath" }
 Write-Host "Executable: $($exeFile.FullName) ($($exeFile.Length) bytes)"
+
+$apiDirUnix = $ApiPath -replace '\\', '/'
 
 Write-Host "`n=== STEP 0: Electron Node smoke test ==="
 $smokeCode = @"
@@ -59,8 +55,6 @@ $modules = @(
   "reflect-metadata",
   "express-session"
 )
-
-$apiDirUnix = $ApiPath -replace '\\', '/'
 
 foreach ($mod in $modules) {
   Write-Host "`n=== Testing: $mod ==="
