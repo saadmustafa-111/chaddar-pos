@@ -127,8 +127,16 @@ jobs:
         run: |
           $script = Join-Path $env:GITHUB_WORKSPACE "apps\desktop\scripts\test-critical-modules.ps1"
           if (!(Test-Path $script)) { throw "Missing CI script: $script" }
-          $exePath = (Get-ChildItem "apps/desktop/release/win-unpacked" -Filter "*.exe" -Recurse -File | Where-Object { $_.Name -notmatch "Uninstall" } | Select-Object -First 1).FullName
-          $apiPath = Join-Path $env:GITHUB_WORKSPACE "apps\desktop\release\win-unpacked\resources\api"
+          $winUnpacked = Join-Path $env:GITHUB_WORKSPACE "apps\desktop\release\win-unpacked"
+          $allExes = Get-ChildItem $winUnpacked -Filter "*.exe" -Recurse -File
+          Write-Host "Available executables:"
+          foreach ($e in $allExes) { Write-Host "  $($e.FullName)" }
+          $mainExe = $allExes | Where-Object { $_.Name -notmatch "Uninstall|Crashpad|Updater|helper" } | Select-Object -First 1
+          if (!$mainExe) { throw "Could not find main Electron executable in win-unpacked" }
+          $exePath = $mainExe.FullName
+          $apiPath = Join-Path $winUnpacked "resources\api"
+          Write-Host "Selected executable: $exePath"
+          Write-Host "API path: $apiPath"
           & $script -ExePath $exePath -ApiPath $apiPath
 
       - name: Hard FAIL test - better-sqlite3 SQLite SELECT 1
@@ -136,8 +144,14 @@ jobs:
         run: |
           $script = Join-Path $env:GITHUB_WORKSPACE "apps\desktop\scripts\test-sqlite-select1.ps1"
           if (!(Test-Path $script)) { throw "Missing CI script: $script" }
-          $exePath = (Get-ChildItem "apps/desktop/release/win-unpacked" -Filter "*.exe" -Recurse -File | Where-Object { $_.Name -notmatch "Uninstall" } | Select-Object -First 1).FullName
-          $apiPath = Join-Path $env:GITHUB_WORKSPACE "apps\desktop\release\win-unpacked\resources\api"
+          $winUnpacked = Join-Path $env:GITHUB_WORKSPACE "apps\desktop\release\win-unpacked"
+          $allExes = Get-ChildItem $winUnpacked -Filter "*.exe" -Recurse -File
+          $mainExe = $allExes | Where-Object { $_.Name -notmatch "Uninstall|Crashpad|Updater|helper" } | Select-Object -First 1
+          if (!$mainExe) { throw "Could not find main Electron executable in win-unpacked" }
+          $exePath = $mainExe.FullName
+          $apiPath = Join-Path $winUnpacked "resources\api"
+          Write-Host "Selected executable: $exePath"
+          Write-Host "API path: $apiPath"
           & $script -ExePath $exePath -ApiPath $apiPath
 
       - name: Hard FAIL test - API bootstrap and health endpoint
@@ -145,8 +159,14 @@ jobs:
         run: |
           $script = Join-Path $env:GITHUB_WORKSPACE "apps\desktop\scripts\test-api-health.ps1"
           if (!(Test-Path $script)) { throw "Missing CI script: $script" }
-          $exePath = (Get-ChildItem "apps/desktop/release/win-unpacked" -Filter "*.exe" -Recurse -File | Where-Object { $_.Name -notmatch "Uninstall" } | Select-Object -First 1).FullName
-          $apiPath = Join-Path $env:GITHUB_WORKSPACE "apps\desktop\release\win-unpacked\resources\api"
+          $winUnpacked = Join-Path $env:GITHUB_WORKSPACE "apps\desktop\release\win-unpacked"
+          $allExes = Get-ChildItem $winUnpacked -Filter "*.exe" -Recurse -File
+          $mainExe = $allExes | Where-Object { $_.Name -notmatch "Uninstall|Crashpad|Updater|helper" } | Select-Object -First 1
+          if (!$mainExe) { throw "Could not find main Electron executable in win-unpacked" }
+          $exePath = $mainExe.FullName
+          $apiPath = Join-Path $winUnpacked "resources\api"
+          Write-Host "Selected executable: $exePath"
+          Write-Host "API path: $apiPath"
           & $script -ExePath $exePath -ApiPath $apiPath
 
       - name: Verify NSIS installer was created

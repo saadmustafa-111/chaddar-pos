@@ -1,5 +1,6 @@
 param([string]$ExePath, [string]$ApiPath, [int]$Port=4555)
-$apiMain = "$ApiPath\main.js"
+
+$apiMain = Join-Path $ApiPath "main.js"
 $dbPath = "$env:TEMP\steelcoil_test.db"
 $attachPath = "$env:TEMP\steelcoil_test_attachments"
 
@@ -14,17 +15,35 @@ $env:DESKTOP_MODE = "true"
 $env:ALLOWED_ORIGIN = "*"
 $env:INITIAL_ADMIN_PASSWORD = "TestPass123!"
 
+Write-Host "=== DIAGNOSTIC: API Health Test Environment ==="
+Write-Host "ExePath: $ExePath"
+Write-Host "ApiPath: $ApiPath"
+Write-Host "ApiMain: $apiMain"
+Write-Host "PORT: $env:PORT"
+
+if (!(Test-Path $apiMain)) { throw "Missing main.js at: $apiMain" }
+Write-Host "main.js verified: $apiMain"
+
+$exeFile = Get-Item $ExePath -ErrorAction SilentlyContinue
+if (!$exeFile) { throw "Executable not found: $ExePath" }
+Write-Host "Executable: $($exeFile.FullName) ($($exeFile.Length) bytes)"
+
 if (!(Test-Path $attachPath)) { New-Item -ItemType Directory -Path $attachPath -Force | Out-Null }
 
-Write-Host "Starting API: $ExePath $apiMain"
+Write-Host "`nStarting API: $ExePath $apiMain"
 Write-Host "PORT=$env:PORT DATABASE_PATH=$dbPath"
 
-$proc = Start-Process -FilePath $ExePath -ArgumentList $apiMain -EnvironmentVariables $env -PassThru -NoNewWindow -RedirectStandardOutput "$env:TEMP\api_stdout.log" -RedirectStandardError "$env:TEMP\api_stderr.log"
+$stdoutLog = "$env:TEMP\api_health_stdout.log"
+$stderrLog = "$env:TEMP\api_health_stderr.log"
+
+$proc = Start-Process -FilePath $ExePath -ArgumentList $apiMain -EnvironmentVariables $env -PassThru -NoNewWindow -RedirectStandardOutput $stdoutLog -RedirectStandardError $stderrLog
 
 $healthOk = $false
 $maxWait = 30000
 $interval = 500
 $elapsed = 0
+
+Write-Host "Waiting for API health endpoint..."
 
 while ($elapsed -lt $maxWait) {
   Start-Sleep -Milliseconds $interval
@@ -32,8 +51,8 @@ while ($elapsed -lt $maxWait) {
 
   if ($proc.HasExited) {
     $exitCode = $proc.ExitCode
-    $stderr = Get-Content "$env:TEMP\api_stderr.log" -Raw -ErrorAction SilentlyContinue
-    $stdout = Get-Content "$env:TEMP\api_stdout.log" -Raw -ErrorAction SilentlyContinue
+    $stderr = Get-Content $stderrLog -Raw -ErrorAction SilentlyContinue
+    $stdout = Get-Content $stdoutLog -Raw -ErrorAction SilentlyContinue
     Stop-Process $proc.Id -Force -ErrorAction SilentlyContinue
     throw "API process exited prematurely. Exit code: $exitCode. Stdout: $stdout. Stderr: $stderr"
   }
@@ -50,8 +69,8 @@ while ($elapsed -lt $maxWait) {
   }
 }
 
-$stderr = Get-Content "$env:TEMP\api_stderr.log" -Raw -ErrorAction SilentlyContinue
-$stdout = Get-Content "$env:TEMP\api_stdout.log" -Raw -ErrorAction SilentlyContinue
+$stderr = Get-Content $stderrLog -Raw -ErrorAction SilentlyContinue
+$stdout = Get-Content $stdoutLog -Raw -ErrorAction SilentlyContinue
 
 if (!$healthOk) {
   Stop-Process $proc.Id -Force -ErrorAction SilentlyContinue
@@ -63,4 +82,6 @@ if (!$healthOk) {
 Stop-Process $proc.Id -Force -ErrorAction SilentlyContinue
 Remove-Item $dbPath -ErrorAction SilentlyContinue
 Remove-Item $attachPath -Recurse -ErrorAction SilentlyContinue
+Remove-Item $stdoutLog -ErrorAction SilentlyContinue
+Remove-Item $stderrLog -ErrorAction SilentlyContinue
 Write-Host "API bootstrap and health endpoint test: PASS"
