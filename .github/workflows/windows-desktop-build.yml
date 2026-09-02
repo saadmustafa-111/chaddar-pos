@@ -156,7 +156,7 @@ jobs:
       - name: Verify win-unpacked resources structure
         shell: pwsh
         run: |
-          $winUnpacked = "apps/desktop/release/win-unpacked"
+          $winUnpacked = Join-Path $env:GITHUB_WORKSPACE "apps\desktop\release\win-unpacked"
           if (!(Test-Path "$winUnpacked/resources/api/main.js")) { throw "Missing: resources/api/main.js" }
           if (!(Test-Path "$winUnpacked/resources/api/app.module.js")) { throw "Missing: resources/api/app.module.js" }
           if (!(Test-Path "$winUnpacked/resources/api/modules")) { throw "Missing: resources/api/modules" }
@@ -178,7 +178,7 @@ jobs:
       - name: Verify better-sqlite3 prebuilt binding exists
         shell: pwsh
         run: |
-          $winUnpacked = "apps/desktop/release/win-unpacked"
+          $winUnpacked = Join-Path $env:GITHUB_WORKSPACE "apps\desktop\release\win-unpacked"
           $prebuiltPath = "$winUnpacked/resources/api/node_modules/better-sqlite3/prebuilds/win32-x64.node"
 
           if (!(Test-Path $prebuiltPath)) {
@@ -241,7 +241,8 @@ jobs:
       - name: Verify NSIS installer was created
         shell: pwsh
         run: |
-          $exeFiles = Get-ChildItem "apps/desktop/release" -Filter "*.exe" -Recurse -File
+          $desktopRelease = Join-Path $env:GITHUB_WORKSPACE "apps\desktop\release"
+          $exeFiles = Get-ChildItem $desktopRelease -Filter "*.exe" -Recurse -File
           if ($exeFiles.Count -eq 0) { throw "No .exe files found in apps/desktop/release" }
           foreach ($exe in $exeFiles) {
             Write-Host "Found installer: $($exe.FullName) ($($exe.Length / 1MB) MB)"
