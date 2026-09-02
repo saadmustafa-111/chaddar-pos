@@ -39,57 +39,10 @@ jobs:
       - name: Create API production bundle
         shell: pwsh
         run: |
-          $apiBundle = "apps/api/prod-bundle"
-          $apiDist = "apps/api/dist"
-          $apiPkg = "apps/api/package.json"
-
-          Write-Host "Creating API production bundle at $apiBundle"
-
-          if (Test-Path $apiBundle) { Remove-Item $apiBundle -Recurse -Force }
-          New-Item -ItemType Directory -Path $apiBundle -Force | Out-Null
-
-          Copy-Item -Path $apiDist -Destination "$apiBundle/dist" -Recurse -Force
-          Write-Host "Copied dist/ to bundle"
-
-          $pkg = Get-Content $apiPkg -Raw | ConvertFrom-Json
-          $deployPkg = @{
-            name = $pkg.name
-            version = $pkg.version
-            main = $pkg.main
-            dependencies = $pkg.dependencies
-            scripts = @{ start = "node dist/main" }
-          }
-          $deployPkgJson = $deployPkg | ConvertTo-Json -Depth 10
-          [System.IO.File]::WriteAllText("$apiBundle/package.json", $deployPkgJson)
-          Write-Host "Created bundle package.json"
-
-          $bundleNpmrc = "$apiBundle/.npmrc"
-          $npmrcContent = @"
-shamefully-hoist=true
-"@
-          [System.IO.File]::WriteAllText($bundleNpmrc, $npmrcContent)
-          Write-Host "Created bundle .npmrc with hoisting"
-
-          Push-Location $apiBundle
-          try {
-            Write-Host "Installing production dependencies..."
-            pnpm install --prod --ignore-scripts 2>&1 | ForEach-Object { Write-Host "pnpm: $_" }
-            if ($LASTEXITCODE -ne 0) { throw "pnpm install --prod failed in bundle" }
-
-            Write-Host "Verifying no broken symlinks..."
-            $brokenLinks = Get-ChildItem -Path "$apiBundle/node_modules" -Recurse -Force -ErrorAction SilentlyContinue | Where-Object { $_.Attributes -match "ReparsePoint" -and !(Test-Path $_.FullName) }
-            if ($brokenLinks) {
-              Write-Host "WARNING: Found $($brokenLinks.Count) broken symlinks"
-              $brokenLinks | Select-Object -First 5 | ForEach-Object { Write-Host "  $($_.FullName)" }
-              throw "Bundle contains broken symlinks"
-            } else {
-              Write-Host "No broken symlinks found - bundle is clean"
-            }
-          } finally {
-            Pop-Location
-          }
-
-          Write-Host "API production bundle created: PASS"
+          $script = Join-Path $env:GITHUB_WORKSPACE "apps\desktop\scripts\create-api-prod-bundle.ps1"
+          if (!(Test-Path $script)) { throw "Missing script: $script" }
+          & $script
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Build Web
         run: pnpm --filter web build
