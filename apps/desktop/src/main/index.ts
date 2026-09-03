@@ -299,23 +299,17 @@ app.whenReady().then(async () => {
   log.info('App ready');
 
   try {
-    // Allocate ports
-    const [apiPort, webPort] = await Promise.all([
-      findFreePort(4000, 4999),
-      findFreePort(3000, 3999),
-    ]);
+    const FIXED_API_PORT = 4555;
 
-    log.info(`Using API port: ${apiPort}, Web port: ${webPort}`);
+    const webPort = await findFreePort(3000, 3999);
+    log.info(`Using API port: ${FIXED_API_PORT}, Web port: ${webPort}`);
 
-    // Start API
-    apiServer = await startApiServer(apiPort);
+    apiServer = await startApiServer(FIXED_API_PORT);
     const apiUrl = `http://127.0.0.1:${apiServer.port}`;
 
-    // Start Web
     webServer = await startWebServer(webPort, apiUrl);
     const webUrl = `http://127.0.0.1:${webServer.port}`;
 
-    // Create window
     mainWindow = createMainWindow(webUrl);
 
   } catch (err) {

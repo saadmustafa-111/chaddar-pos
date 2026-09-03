@@ -37,19 +37,102 @@ jobs:
         run: pnpm --filter api build
 
       - name: Deploy API production bundle
-        run: pnpm --filter api deploy --legacy --ignore-scripts --prod apps/api/deploy
+        shell: pwsh
+        run: |
+          ./scripts/deploy-api.ps1 -SourceApiPath "apps/api" -DeployPath "apps/api/deploy"
 
-      - name: Copy API build output to deploy
-        run: robocopy apps/api/dist apps/api/deploy/dist /E /IS /IT
+      - name: Rebuild native modules in deployed API for Electron
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $apiDeployPath = Join-Path $env:GITHUB_WORKSPACE "apps\api\deploy"
+          $electronVersion = (Get-Content "$env:GITHUB_WORKSPACE\apps\desktop\node_modules\electron\package.json" -ErrorAction SilentlyContinue | ConvertFrom-Json | Select-Object -ExpandProperty version)
+          if (-not $electronVersion) {
+            $electronVersion = "33.2.1"
+          }
+          Write-Host "Rebuilding better-sqlite3 for Electron $electronVersion..."
+          Push-Location $apiDeployPath
+          try {
+            npx --yes @electron/rebuild -f -w better-sqlite3 -v $electronVersion -m . 2>&1 | ForEach-Object { Write-Host "  $_" }
+          } finally {
+            Pop-Location
+          }
 
       - name: Build Web
-        run: pnpm --filter web build
+        shell: pwsh
+        run: |
+          $env:NEXT_PUBLIC_API_URL = "http://127.0.0.1:4555/api/v1"
+          Write-Host "NEXT_PUBLIC_API_URL set to: $env:NEXT_PUBLIC_API_URL"
+          pnpm --filter web build
 
       - name: Build Desktop
         run: pnpm --filter desktop build
 
       - name: Rebuild native modules for Electron
         run: pnpm --filter desktop exec npx --yes electron-builder install-app-deps
+
+      - name: Verify staged production API
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $apiDeployPath = Join-Path $env:GITHUB_WORKSPACE "apps\api\deploy"
+          $apiMainJs = Join-Path $apiDeployPath "dist\main.js"
+          $nodeModules = Join-Path $apiDeployPath "node_modules"
+
+          Write-Host "=== Verifying Staged Production API ==="
+
+          if (-not (Test-Path $apiMainJs)) {
+            throw "MISSING: API main.js not found at $apiMainJs"
+          }
+          Write-Host "[OK] API main.js exists"
+
+          if (-not (Test-Path (Join-Path $nodeModules "@nestjs\core"))) {
+            throw "MISSING: @nestjs/core not found"
+          }
+          Write-Host "[OK] @nestjs/core exists"
+
+          if (-not (Test-Path (Join-Path $nodeModules "better-sqlite3"))) {
+            throw "MISSING: better-sqlite3 not found"
+          }
+          Write-Host "[OK] better-sqlite3 exists"
+
+          $betterSqlite3Lib = Join-Path $nodeModules "better-sqlite3\lib"
+          if (-not (Test-Path $betterSqlite3Lib)) {
+            throw "MISSING: better-sqlite3 lib folder"
+          }
+          Write-Host "[OK] better-sqlite3 lib exists"
+
+          $bindings = Join-Path $nodeModules "better-sqlite3\build\Release"
+          if (-not (Test-Path $bindings)) {
+            $bindings = Join-Path $nodeModules "better-sqlite3\prebuilds"
+          }
+          if (-not (Test-Path $bindings)) {
+            throw "MISSING: better-sqlite3 native bindings not found"
+          }
+          Write-Host "[OK] better-sqlite3 native bindings exist"
+
+          Write-Host ""
+          Write-Host "Checking for external junctions in deployed node_modules..."
+          $externalLinks = Get-ChildItem $nodeModules -Recurse -Depth 3 -ErrorAction SilentlyContinue |
+            Where-Object { $_.LinkType -in @('SymbolicLink', 'Junction') } |
+            Where-Object {
+              $target = $_.Target
+              if ($target -is [System.Object[]]) { $target = $target[0] }
+              $target -notlike "*$apiDeployPath*"
+            }
+          if ($externalLinks) {
+            Write-Host "WARNING: Found $($externalLinks.Count) external junctions:"
+            $externalLinks | Select-Object -First 5 | ForEach-Object {
+              $target = $_.Target
+              if ($target -is [System.Object[]]) { $target = $target[0] }
+              Write-Host "  $($_.FullName) -> $target"
+            }
+          } else {
+            Write-Host "[OK] No external junctions found"
+          }
+
+          Write-Host ""
+          Write-Host "=== Staged API Verification PASSED ==="
 
       - name: Electron Builder
         run: pnpm --filter desktop dist --win nsis --x64
