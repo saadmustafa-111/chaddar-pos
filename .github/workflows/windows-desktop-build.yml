@@ -215,21 +215,21 @@ jobs:
 
           Write-Host ""
           Write-Host "=== Loading better-sqlite3 with Electron ==="
-          $testScript = @"
-          const Database = require('./node_modules/better-sqlite3/lib/index.js');
-          console.log('Node ABI:', process.versions.modules);
-          console.log('Electron version:', process.versions.electron);
-          console.log('Node version:', process.versions.node);
-          const db = new Database(':memory:');
-          console.log('In-memory DB opened OK');
-          const r = db.prepare('SELECT 1 as v').get();
-          console.log('Query result:', JSON.stringify(r));
-          db.close();
-          console.log('SQLite PASS');
-"@
+          $testScriptContent = @'
+const Database = require('./node_modules/better-sqlite3/lib/index.js');
+console.log('Node ABI:', process.versions.modules);
+console.log('Electron version:', process.versions.electron);
+console.log('Node version:', process.versions.node);
+const db = new Database(':memory:');
+console.log('In-memory DB opened OK');
+const r = db.prepare('SELECT 1 as v').get();
+console.log('Query result:', JSON.stringify(r));
+db.close();
+console.log('SQLite PASS');
+'@
 
           $testScriptPath = Join-Path $apiBase "test_bs3_electron.js"
-          $testScript | Set-Content -Path $testScriptPath -Encoding UTF8
+          $testScriptContent | Set-Content -Path $testScriptPath -Encoding UTF8
 
           $psi = New-Object System.Diagnostics.ProcessStartInfo
           $psi.FileName = $electronExe
