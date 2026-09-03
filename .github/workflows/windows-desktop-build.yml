@@ -50,7 +50,8 @@ jobs:
           if (-not $electronVersion) {
             $electronVersion = "33.2.1"
           }
-          Write-Host "Rebuilding better-sqlite3 for Electron $electronVersion..."
+          $env:GYP_MSVS_VERSION = "2022"
+          Write-Host "Rebuilding better-sqlite3 for Electron $electronVersion with VS $env:GYP_MSVS_VERSION..."
           Push-Location $apiDeployPath
           try {
             npx --yes @electron/rebuild -f -w better-sqlite3 -v $electronVersion -m . 2>&1 | ForEach-Object { Write-Host "  $_" }
