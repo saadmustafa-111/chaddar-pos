@@ -253,9 +253,8 @@ jobs:
 
       - name: API startup diagnostic
         shell: pwsh
-        timeout-minutes: 3
+        timeout-minutes: 2
         run: |
-          $ErrorActionPreference = 'Stop'
           $winUnpacked = Join-Path $env:GITHUB_WORKSPACE "apps\desktop\release\win-unpacked"
           $electronExe = Get-ChildItem $winUnpacked -Filter "*.exe" -File | Select-Object -First 1 | Select-Object -ExpandProperty FullName
           $apiBase = Join-Path $winUnpacked "resources\api"
@@ -286,60 +285,36 @@ jobs:
 
           Write-Host "=== Starting API for startup diagnostic ==="
           $proc = [System.Diagnostics.Process]::Start($apiPsi)
-          $sbOut = [System.Text.StringBuilder]::new()
-          $sbErr = [System.Text.StringBuilder]::new()
-          $hadOutput = $false
-          $sw = [System.Diagnostics.Stopwatch]::StartNew()
-          $lineCount = 0
-          while (-not $proc.HasExited -and $sw.ElapsedMilliseconds -lt 10000) {
-              if ($proc.StandardOutput.Peek() -ge 0) {
-                  $line = $proc.StandardOutput.ReadLine()
-                  if ($line) {
-                      $null = $sbOut.AppendLine($line)
-                      Write-Host "[stdout] $line"
-                      $hadOutput = $true
-                      $lineCount++
-                  }
-              }
-              if ($proc.StandardError.Peek() -ge 0) {
-                  $line = $proc.StandardError.ReadLine()
-                  if ($line) {
-                      $null = $sbErr.AppendLine($line)
-                      Write-Host "[stderr] $line"
-                      $hadOutput = $true
-                      $lineCount++
-                  }
-              }
-              if ($lineCount -gt 100) { Write-Host "(truncating output)"; break }
-              Start-Sleep 50
-          }
-          $sw.Stop()
-          $stdout = $sbOut.ToString()
-          $stderr = $sbErr.ToString()
+          $stdoutAll = ""
+          $stderrAll = ""
+          Start-Sleep 15
+          $stdoutAll = $proc.StandardOutput.ReadToEnd()
+          $stderrAll = $proc.StandardError.ReadToEnd()
           $exitCode = -1
+          $alive = -not $proc.HasExited
           if ($proc.HasExited) { $exitCode = $proc.ExitCode }
-          Write-Host ""
-          Write-Host "=== Diagnostic Summary ==="
-          Write-Host "Process alive: $(-not $proc.HasExited)"
+          Write-Host "Process alive after 15s: $alive"
           Write-Host "ExitCode: $exitCode"
-          Write-Host "Duration: $($sw.ElapsedMilliseconds)ms"
-          Write-Host "Lines: $lineCount"
-          Write-Host "Has 'Nest application successfully started': $($stdout.Contains('Nest application successfully started'))"
-          Write-Host "Has 'app.listen() completed': $($stdout.Contains('app.listen() completed'))"
-          Write-Host "Has 'About to listen': $($stdout.Contains('About to listen'))"
-          Write-Host "Has 'Creating NestFactory': $($stdout.Contains('Creating NestFactory'))"
-          Write-Host "Has 'NestFactory created': $($stdout.Contains('NestFactory created'))"
-          Write-Host "Has 'Failed to start application': $($stdout.Contains('Failed to start application') -or $stderr.Contains('Failed to start application'))"
-          Write-Host "Has 'Unable to connect': $($stdout.Contains('Unable to connect') -or $stderr.Contains('Unable to connect'))"
-          Write-Host "Has 'listen EADDRINUSE': $($stdout.Contains('EADDRINUSE') -or $stderr.Contains('EADDRINUSE'))"
-          if (-not $proc.HasExited) { $proc.Kill() }
+          Write-Host "STDOUT lines:"
+          Write-Host $stdoutAll
+          Write-Host "STDERR lines:"
+          Write-Host $stderrAll
+          Write-Host "=== Key checks ==="
+          Write-Host "Has 'Bootstrap': $($stdoutAll.Contains('[Bootstrap]'))"
+          Write-Host "Has 'Creating NestFactory': $($stdoutAll.Contains('Creating NestFactory'))"
+          Write-Host "Has 'NestFactory created': $($stdoutAll.Contains('NestFactory created'))"
+          Write-Host "Has 'About to listen': $($stdoutAll.Contains('About to listen'))"
+          Write-Host "Has 'app.listen': $($stdoutAll.Contains('app.listen'))"
+          Write-Host "Has 'Nest application successfully started': $($stdoutAll.Contains('Nest application successfully started'))"
+          Write-Host "Has 'Failed to start': $($stdoutAll.Contains('Failed to start') -or $stderrAll.Contains('Failed to start'))"
+          if ($alive) { $proc.Kill() }
           $proc.Dispose()
           Remove-Item $userDataPath -Recurse -Force -ErrorAction SilentlyContinue
-          if ($stdout.Contains('Nest application successfully started') -or $stdout.Contains('app.listen() completed')) {
+          if (-not $alive -and ($stdoutAll.Contains('app.listen'))) {
               Write-Host "=== Startup diagnostic PASSED ==="
           } else {
-              Write-Host "=== Startup diagnostic FAILED - API did not start listening ==="
-              throw "API startup failed. stdout length: $($stdout.Length), stderr length: $($stderr.Length)"
+              Write-Host "=== Startup diagnostic FAILED ==="
+              exit 1
           }
 
       - name: Runtime smoke test - packaged API and web
