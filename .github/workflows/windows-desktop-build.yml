@@ -253,7 +253,7 @@ jobs:
 
       - name: API startup diagnostic
         shell: pwsh
-        timeout-minutes: 1
+        timeout-minutes: 2
         run: |
           $winUnpacked = Join-Path $env:GITHUB_WORKSPACE "apps\desktop\release\win-unpacked"
           $apiBase = Join-Path $winUnpacked "resources\api"
@@ -266,7 +266,8 @@ jobs:
 
           $apiMainJs = Join-Path $apiBase "dist\main.js"
           Write-Host "Main JS: $apiMainJs"
-          Write-Host "node location: $(Get-Command node -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Source)"
+          Write-Host "node: $(Get-Command node -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Source)"
+          Write-Host "main.js exists: $(Test-Path $apiMainJs)"
 
           Write-Host "=== Testing node ==="
           $testOut = "$env:TEMP\node-test-$PID.log"
@@ -292,9 +293,9 @@ jobs:
 
           $stdoutAll = if (Test-Path $outFile) { Get-Content $outFile -Raw } else { "" }
           $stderrAll = if (Test-Path $errFile) { Get-Content $errFile -Raw } else { "" }
-          Write-Host "=== STDOUT ==="
+          Write-Host "=== STDOUT ($($stdoutAll.Length) chars) ==="
           Write-Host $stdoutAll
-          Write-Host "=== STDERR ==="
+          Write-Host "=== STDERR ($($stderrAll.Length) chars) ==="
           Write-Host $stderrAll
 
           if ($alive) {
@@ -316,7 +317,7 @@ jobs:
                   exit 1
               }
           } else {
-              Write-Host "Process died early"
+              Write-Host "Process died early (exit code: $exitCode)"
               $apiProc.Dispose()
               Remove-Item $outFile,$errFile -Force -ErrorAction SilentlyContinue
               Remove-Item $userDataPath -Recurse -Force -ErrorAction SilentlyContinue
