@@ -255,92 +255,70 @@ jobs:
         shell: pwsh
         timeout-minutes: 1
         run: |
-          Write-Host "=== DIAGNOSTIC SCRIPT START ==="
           $winUnpacked = Join-Path $env:GITHUB_WORKSPACE "apps\desktop\release\win-unpacked"
           $apiBase = Join-Path $winUnpacked "resources\api"
           $userDataPath = "$env:TEMP\chaddar-diag-$PID"
           $dbDir = "$userDataPath\data"
           $dbPath = "$dbDir\steelcoil.db"
+          $outFile = "$env:TEMP\chaddar-out-$PID.log"
+          $errFile = "$env:TEMP\chaddar-err-$PID.log"
           New-Item -ItemType Directory -Path $dbDir -Force | Out-Null
+
           $apiMainJs = Join-Path $apiBase "dist\main.js"
           Write-Host "Main JS: $apiMainJs"
-          Write-Host "node: $(Get-Command node -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Source)"
+          Write-Host "node location: $(Get-Command node -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Source)"
 
-          Write-Host "=== Starting node process ==="
-          $psi = New-Object System.Diagnostics.ProcessStartInfo
-          $psi.FileName = "node"
-          $psi.Arguments = "--version"
-          $psi.UseShellExecute = $false
-          $psi.RedirectStandardOutput = $true
-          $psi.RedirectStandardError = $true
-          $psi.CreateNoWindow = $true
-          $proc = [System.Diagnostics.Process]::Start($psi)
-          $proc.WaitForExit(5000)
-          $verOut = $proc.StandardOutput.ReadToEnd()
-          $verErr = $proc.StandardError.ReadToEnd()
-          Write-Host "node --version stdout: $verOut"
-          Write-Host "node --version stderr: $verErr"
-          $proc.Dispose()
+          Write-Host "=== Testing node ==="
+          $testOut = "$env:TEMP\node-test-$PID.log"
+          Start-Process -FilePath "node" -ArgumentList "--version" -NoNewWindow -Wait -RedirectStandardOutput $testOut
+          $nodeVer = Get-Content $testOut -Raw
+          Write-Host "node version: $nodeVer"
+          Remove-Item $testOut -Force -ErrorAction SilentlyContinue
 
-          Write-Host "=== Starting API process ==="
-          $psi2 = New-Object System.Diagnostics.ProcessStartInfo
-          $psi2.FileName = "node"
-          $psi2.Arguments = $apiMainJs
-          $psi2.WorkingDirectory = $apiBase
-          $psi2.UseShellExecute = $false
-          $psi2.RedirectStandardOutput = $true
-          $psi2.RedirectStandardError = $true
-          $psi2.CreateNoWindow = $true
-          $psi2.EnvironmentVariables['NODE_ENV'] = 'production'
-          $psi2.EnvironmentVariables['PORT'] = '4555'
-          $psi2.EnvironmentVariables['DATABASE_PATH'] = $dbPath
-          $psi2.EnvironmentVariables['ATTACHMENTS_DIR'] = "$dbDir\attachments"
-          $psi2.EnvironmentVariables['UPLOADS_BASE_URL'] = 'http://127.0.0.1:4555/uploads'
-          $psi2.EnvironmentVariables['SESSION_SECRET'] = "diag-$PID"
-          $psi2.EnvironmentVariables['DESKTOP_MODE'] = 'true'
-          $psi2.EnvironmentVariables['ALLOWED_ORIGIN'] = '*'
-          $psi2.EnvironmentVariables['INITIAL_ADMIN_PASSWORD'] = 'SteelCoil2026!'
-          $apiProc = [System.Diagnostics.Process]::Start($psi2)
-          $apiPid = $apiProc.Id
-          Write-Host "Started API PID $apiPid, waiting 20s..."
+          Write-Host "=== Starting API process (20s wait) ==="
+          $apiEnv = @{
+            'NODE_ENV'='production'; 'PORT'='4555'; 'DATABASE_PATH'=$dbPath;
+            'ATTACHMENTS_DIR'="$dbDir\attachments"; 'UPLOADS_BASE_URL'='http://127.0.0.1:4555/uploads';
+            'SESSION_SECRET'="diag-$PID"; 'DESKTOP_MODE'='true';
+            'ALLOWED_ORIGIN'='*'; 'INITIAL_ADMIN_PASSWORD'='SteelCoil2026!'
+          }
+          $apiProc = Start-Process -FilePath "node" -ArgumentList $apiMainJs -WorkingDirectory $apiBase -PassThru `
+            -RedirectStandardOutput $outFile -RedirectStandardError $errFile -EnvironmentVariables $apiEnv
+          Write-Host "Started PID: $($apiProc.Id)"
           Start-Sleep 20
           $alive = -not $apiProc.HasExited
-          $exitCode = -1
-          if ($apiProc.HasExited) { $exitCode = $apiProc.ExitCode }
+          $exitCode = if ($apiProc.HasExited) { $apiProc.ExitCode } else { -1 }
           Write-Host "After 20s: alive=$alive exitCode=$exitCode"
 
-          $outLines = @()
-          $errLines = @()
-          while ($apiProc.StandardOutput.Peek() -ge 0) {
-              $line = $apiProc.StandardOutput.ReadLine()
-              if ($line) { $outLines += $line; Write-Host "[out] $line" }
-          }
-          while ($apiProc.StandardError.Peek() -ge 0) {
-              $line = $apiProc.StandardError.ReadLine()
-              if ($line) { $errLines += $line; Write-Host "[err] $line" }
-          }
-          $stdoutAll = $outLines -join "`n"
-          $stderrAll = $errLines -join "`n"
+          $stdoutAll = if (Test-Path $outFile) { Get-Content $outFile -Raw } else { "" }
+          $stderrAll = if (Test-Path $errFile) { Get-Content $errFile -Raw } else { "" }
+          Write-Host "=== STDOUT ==="
+          Write-Host $stdoutAll
+          Write-Host "=== STDERR ==="
+          Write-Host $stderrAll
 
           if ($alive) {
               try {
                   $resp = Invoke-WebRequest -Uri "http://127.0.0.1:4555/health" -TimeoutSec 5 -UseBasicParsing
                   Write-Host "HTTP OK: $($resp.StatusCode)"
-                  $apiProc.Kill()
+                  Stop-Process $apiProc.Id -Force -ErrorAction SilentlyContinue
                   $apiProc.Dispose()
+                  Remove-Item $outFile,$errFile -Force -ErrorAction SilentlyContinue
                   Remove-Item $userDataPath -Recurse -Force -ErrorAction SilentlyContinue
                   Write-Host "=== PASSED ==="
               } catch {
-                  Write-Host "HTTP FAILED: $($_.Exception.Message)"
-                  $apiProc.Kill()
+                  Write-Host "HTTP failed: $($_.Exception.Message)"
+                  Stop-Process $apiProc.Id -Force -ErrorAction SilentlyContinue
                   $apiProc.Dispose()
+                  Remove-Item $outFile,$errFile -Force -ErrorAction SilentlyContinue
                   Remove-Item $userDataPath -Recurse -Force -ErrorAction SilentlyContinue
                   Write-Host "=== FAILED ==="
                   exit 1
               }
           } else {
-              Write-Host "Process died. STDOUT: $stdoutAll"
+              Write-Host "Process died early"
               $apiProc.Dispose()
+              Remove-Item $outFile,$errFile -Force -ErrorAction SilentlyContinue
               Remove-Item $userDataPath -Recurse -Force -ErrorAction SilentlyContinue
               Write-Host "=== FAILED ==="
               exit 1
