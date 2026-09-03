@@ -307,6 +307,41 @@ jobs:
             $apipsi.EnvironmentVariables['INITIAL_ADMIN_PASSWORD'] = 'SteelCoil2026!'
             $apiProc = [System.Diagnostics.Process]::Start($apipsi)
 
+            Write-Host "=== Quick TypeORM file-DB test ==="
+            $quickTestPath = Join-Path $apiBase "quick_test.js"
+            $quickCode = "const { DataSource } = require('typeorm'); const ds = new DataSource({type:'better-sqlite3',database:'$dbPath',synchronize:false,migrationsRun:false}); ds.initialize().then(()=>{console.log('DB INIT OK');return ds.query('SELECT 1')}).then(r=>{console.log('DB QUERY OK:',JSON.stringify(r));ds.destroy().then(()=>process.exit(0))}).catch(e=>{console.error('DB ERROR:',e.message);process.exit(1)});"
+            Set-Content -Path $quickTestPath -Value $quickCode -Encoding UTF8
+            $qtPsi = New-Object System.Diagnostics.ProcessStartInfo
+            $qtPsi.FileName = $electronExe
+            $qtPsi.Arguments = "quick_test.js"
+            $qtPsi.WorkingDirectory = $apiBase
+            $qtPsi.UseShellExecute = $false
+            $qtPsi.RedirectStandardOutput = $true
+            $qtPsi.RedirectStandardError = $true
+            $qtPsi.CreateNoWindow = $true
+            $qtPsi.EnvironmentVariables['NODE_ENV'] = 'production'
+            $qtPsi.EnvironmentVariables['ELECTRON_RUN_AS_NODE'] = '1'
+            $qtPsi.EnvironmentVariables['DATABASE_PATH'] = $dbPath
+            $qtProc = [System.Diagnostics.Process]::Start($qtPsi)
+            $qtExited = $qtProc.WaitForExit(15000)
+            $qtOut = ""
+            $qtErr = ""
+            if ($qtExited) {
+                $qtOut = $qtProc.StandardOutput.ReadToEnd()
+                $qtErr = $qtProc.StandardError.ReadToEnd()
+            } else {
+                $qtProc.Kill()
+                $qtOut = "TIMEOUT"
+                $qtErr = "TIMEOUT"
+            }
+            Write-Host "Quick DB test exit code: $($qtProc.ExitCode)"
+            Write-Host "Quick DB test stdout: $qtOut"
+            if ($qtErr) { Write-Host "Quick DB test stderr: $qtErr" }
+            Remove-Item $quickTestPath -Force -ErrorAction SilentlyContinue
+            if ($qtProc.ExitCode -ne 0 -and $qtProc.ExitCode -ne $null) {
+                Write-Host "FATAL: TypeORM cannot initialize database. Skipping full smoke test."
+            }
+
             Write-Host "Waiting for API health at $apiHealth ..."
             $apiReady = $false
             for ($i = 0; $i -lt 60; $i++) {
