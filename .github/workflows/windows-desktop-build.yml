@@ -59,16 +59,6 @@ jobs:
           Get-ChildItem "C:\Program Files (x86)\Microsoft Visual Studio" -ErrorAction SilentlyContinue | ForEach-Object { Write-Host "  $($_.FullName)" }
           Get-ChildItem "C:\Program Files\Microsoft Visual Studio" -ErrorAction SilentlyContinue | ForEach-Object { Write-Host "  $($_.FullName)" }
           Write-Host ""
-          Write-Host "=== electron-rebuild + node-gyp versions ==="
-          try {
-            $erVer = npx --yes @electron/rebuild --version 2>&1 | Select-Object -First 1
-            Write-Host "electron-rebuild: $erVer"
-          } catch { Write-Host "electron-rebuild: unknown ($_)" }
-          try {
-            $ngVer = npx --yes node-gyp --version 2>&1 | Select-Object -First 1
-            Write-Host "node-gyp: $ngVer"
-          } catch { Write-Host "node-gyp: unknown ($_)" }
-          Write-Host ""
           Write-Host "=== Rebuilding better-sqlite3 for Electron $electronVersion ==="
           Push-Location $apiDeployPath
           try {
