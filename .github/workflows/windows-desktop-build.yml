@@ -41,6 +41,11 @@ jobs:
         run: |
           ./scripts/deploy-api.ps1 -SourceApiPath "apps/api" -DeployPath "apps/api/deploy"
 
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
       - name: Rebuild native modules in deployed API for Electron
         shell: pwsh
         run: |
@@ -50,10 +55,12 @@ jobs:
             $electronVersion = "33.2.1"
           }
           $env:GYP_MSVS_VERSION = "2022"
+          $env:pythonPath = (Get-Command python -ErrorAction SilentlyContinue).Source
           Write-Host "=== Diagnostic Info ==="
           Write-Host "Runner: $env:RUNNER_NAME"
           Write-Host "OS: $([System.Environment]::OSVersion.VersionString)"
           Write-Host "GYP_MSVS_VERSION=$env:GYP_MSVS_VERSION"
+          Write-Host "Python: $env:pythonPath"
           Write-Host ""
           Write-Host "=== Installed Visual Studio instances ==="
           Get-ChildItem "C:\Program Files (x86)\Microsoft Visual Studio" -ErrorAction SilentlyContinue | ForEach-Object { Write-Host "  $($_.FullName)" }
@@ -63,10 +70,10 @@ jobs:
           $vs2022Exists = Test-Path $vs2022Path
           Write-Host "VS2022 Enterprise exists at $vs2022Path : $vs2022Exists"
           Write-Host ""
-          Write-Host "=== Rebuilding better-sqlite3 for Electron $electronVersion ==="
+          Write-Host "=== Rebuilding better-sqlite3 from SOURCE for Electron $electronVersion ==="
           Push-Location $apiDeployPath
           try {
-            npx --yes @electron/rebuild -f -w better-sqlite3 -v $electronVersion -m . 2>&1 | ForEach-Object { Write-Host "  $_" }
+            npx --yes @electron/rebuild --build-from-source -f -w better-sqlite3 -v $electronVersion -m . 2>&1 | ForEach-Object { Write-Host "  $_" }
           } finally {
             Pop-Location
           }
