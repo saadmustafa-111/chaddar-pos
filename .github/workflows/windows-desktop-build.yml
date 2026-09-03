@@ -253,84 +253,96 @@ jobs:
 
       - name: API startup diagnostic
         shell: pwsh
-        timeout-minutes: 2
+        timeout-minutes: 1
         run: |
+          Write-Host "=== DIAGNOSTIC SCRIPT START ==="
           $winUnpacked = Join-Path $env:GITHUB_WORKSPACE "apps\desktop\release\win-unpacked"
           $apiBase = Join-Path $winUnpacked "resources\api"
           $userDataPath = "$env:TEMP\chaddar-diag-$PID"
           $dbDir = "$userDataPath\data"
           $dbPath = "$dbDir\steelcoil.db"
           New-Item -ItemType Directory -Path $dbDir -Force | Out-Null
-
           $apiMainJs = Join-Path $apiBase "dist\main.js"
-          Write-Host "=== API startup diagnostic ==="
           Write-Host "Main JS: $apiMainJs"
+          Write-Host "node: $(Get-Command node -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Source)"
 
+          Write-Host "=== Starting node process ==="
           $psi = New-Object System.Diagnostics.ProcessStartInfo
           $psi.FileName = "node"
-          $psi.Arguments = $apiMainJs
-          $psi.WorkingDirectory = $apiBase
+          $psi.Arguments = "--version"
           $psi.UseShellExecute = $false
           $psi.RedirectStandardOutput = $true
           $psi.RedirectStandardError = $true
           $psi.CreateNoWindow = $true
-          $psi.EnvironmentVariables['NODE_ENV'] = 'production'
-          $psi.EnvironmentVariables['PORT'] = '4555'
-          $psi.EnvironmentVariables['DATABASE_PATH'] = $dbPath
-          $psi.EnvironmentVariables['ATTACHMENTS_DIR'] = "$dbDir\attachments"
-          $psi.EnvironmentVariables['UPLOADS_BASE_URL'] = 'http://127.0.0.1:4555/uploads'
-          $psi.EnvironmentVariables['SESSION_SECRET'] = "diag-$PID"
-          $psi.EnvironmentVariables['DESKTOP_MODE'] = 'true'
-          $psi.EnvironmentVariables['ALLOWED_ORIGIN'] = '*'
-          $psi.EnvironmentVariables['INITIAL_ADMIN_PASSWORD'] = 'SteelCoil2026!'
-
           $proc = [System.Diagnostics.Process]::Start($psi)
-          $procID = $proc.Id
-          Write-Host "Started PID $procID, waiting 25s..."
-          Start-Sleep 25
+          $proc.WaitForExit(5000)
+          $verOut = $proc.StandardOutput.ReadToEnd()
+          $verErr = $proc.StandardError.ReadToEnd()
+          Write-Host "node --version stdout: $verOut"
+          Write-Host "node --version stderr: $verErr"
+          $proc.Dispose()
 
-          $alive = -not $proc.HasExited
+          Write-Host "=== Starting API process ==="
+          $psi2 = New-Object System.Diagnostics.ProcessStartInfo
+          $psi2.FileName = "node"
+          $psi2.Arguments = $apiMainJs
+          $psi2.WorkingDirectory = $apiBase
+          $psi2.UseShellExecute = $false
+          $psi2.RedirectStandardOutput = $true
+          $psi2.RedirectStandardError = $true
+          $psi2.CreateNoWindow = $true
+          $psi2.EnvironmentVariables['NODE_ENV'] = 'production'
+          $psi2.EnvironmentVariables['PORT'] = '4555'
+          $psi2.EnvironmentVariables['DATABASE_PATH'] = $dbPath
+          $psi2.EnvironmentVariables['ATTACHMENTS_DIR'] = "$dbDir\attachments"
+          $psi2.EnvironmentVariables['UPLOADS_BASE_URL'] = 'http://127.0.0.1:4555/uploads'
+          $psi2.EnvironmentVariables['SESSION_SECRET'] = "diag-$PID"
+          $psi2.EnvironmentVariables['DESKTOP_MODE'] = 'true'
+          $psi2.EnvironmentVariables['ALLOWED_ORIGIN'] = '*'
+          $psi2.EnvironmentVariables['INITIAL_ADMIN_PASSWORD'] = 'SteelCoil2026!'
+          $apiProc = [System.Diagnostics.Process]::Start($psi2)
+          $apiPid = $apiProc.Id
+          Write-Host "Started API PID $apiPid, waiting 20s..."
+          Start-Sleep 20
+          $alive = -not $apiProc.HasExited
           $exitCode = -1
-          if ($proc.HasExited) { $exitCode = $proc.ExitCode }
-          Write-Host "After 25s: alive=$alive exitCode=$exitCode"
+          if ($apiProc.HasExited) { $exitCode = $apiProc.ExitCode }
+          Write-Host "After 20s: alive=$alive exitCode=$exitCode"
 
           $outLines = @()
           $errLines = @()
-          while ($proc.StandardOutput.Peek() -ge 0) {
-              $line = $proc.StandardOutput.ReadLine()
+          while ($apiProc.StandardOutput.Peek() -ge 0) {
+              $line = $apiProc.StandardOutput.ReadLine()
               if ($line) { $outLines += $line; Write-Host "[out] $line" }
           }
-          while ($proc.StandardError.Peek() -ge 0) {
-              $line = $proc.StandardError.ReadLine()
+          while ($apiProc.StandardError.Peek() -ge 0) {
+              $line = $apiProc.StandardError.ReadLine()
               if ($line) { $errLines += $line; Write-Host "[err] $line" }
           }
           $stdoutAll = $outLines -join "`n"
           $stderrAll = $errLines -join "`n"
 
           if ($alive) {
-              Write-Host "Process still alive - attempting HTTP check..."
               try {
                   $resp = Invoke-WebRequest -Uri "http://127.0.0.1:4555/health" -TimeoutSec 5 -UseBasicParsing
-                  Write-Host "HTTP status: $($resp.StatusCode)"
-                  $proc.Kill()
-                  $proc.Dispose()
+                  Write-Host "HTTP OK: $($resp.StatusCode)"
+                  $apiProc.Kill()
+                  $apiProc.Dispose()
                   Remove-Item $userDataPath -Recurse -Force -ErrorAction SilentlyContinue
-                  Write-Host "=== Startup diagnostic PASSED ==="
+                  Write-Host "=== PASSED ==="
               } catch {
-                  Write-Host "HTTP check failed: $($_.Exception.Message)"
-                  $proc.Kill()
-                  $proc.Dispose()
+                  Write-Host "HTTP FAILED: $($_.Exception.Message)"
+                  $apiProc.Kill()
+                  $apiProc.Dispose()
                   Remove-Item $userDataPath -Recurse -Force -ErrorAction SilentlyContinue
-                  Write-Host "=== Startup diagnostic FAILED (HTTP unreachable) ==="
+                  Write-Host "=== FAILED ==="
                   exit 1
               }
           } else {
-              Write-Host "Process exited early with code $exitCode"
-              Write-Host "STDOUT: $stdoutAll"
-              Write-Host "STDERR: $stderrAll"
-              $proc.Dispose()
+              Write-Host "Process died. STDOUT: $stdoutAll"
+              $apiProc.Dispose()
               Remove-Item $userDataPath -Recurse -Force -ErrorAction SilentlyContinue
-              Write-Host "=== Startup diagnostic FAILED ==="
+              Write-Host "=== FAILED ==="
               exit 1
           }
 
