@@ -253,7 +253,7 @@ jobs:
 
       - name: API startup diagnostic
         shell: pwsh
-        timeout-minutes: 2
+        timeout-minutes: 1
         run: |
           $winUnpacked = Join-Path $env:GITHUB_WORKSPACE "apps\desktop\release\win-unpacked"
           $electronExe = Get-ChildItem $winUnpacked -Filter "*.exe" -File | Select-Object -First 1 | Select-Object -ExpandProperty FullName
@@ -285,20 +285,24 @@ jobs:
 
           Write-Host "=== Starting API for startup diagnostic ==="
           $proc = [System.Diagnostics.Process]::Start($apiPsi)
-          $stdoutAll = ""
-          $stderrAll = ""
-          Start-Sleep 15
-          $stdoutAll = $proc.StandardOutput.ReadToEnd()
-          $stderrAll = $proc.StandardError.ReadToEnd()
-          $exitCode = -1
+          Start-Sleep 20
           $alive = -not $proc.HasExited
+          $exitCode = -1
           if ($proc.HasExited) { $exitCode = $proc.ExitCode }
-          Write-Host "Process alive after 15s: $alive"
+          Write-Host "Process alive after 20s: $alive"
           Write-Host "ExitCode: $exitCode"
-          Write-Host "STDOUT lines:"
-          Write-Host $stdoutAll
-          Write-Host "STDERR lines:"
-          Write-Host $stderrAll
+          $outLines = @()
+          $errLines = @()
+          while ($proc.StandardOutput.Peek() -ge 0) {
+              $line = $proc.StandardOutput.ReadLine()
+              if ($line) { $outLines += $line; Write-Host "[stdout] $line" }
+          }
+          while ($proc.StandardError.Peek() -ge 0) {
+              $line = $proc.StandardError.ReadLine()
+              if ($line) { $errLines += $line; Write-Host "[stderr] $line" }
+          }
+          $stdoutAll = ($outLines -join "`n")
+          $stderrAll = ($errLines -join "`n")
           Write-Host "=== Key checks ==="
           Write-Host "Has 'Bootstrap': $($stdoutAll.Contains('[Bootstrap]'))"
           Write-Host "Has 'Creating NestFactory': $($stdoutAll.Contains('Creating NestFactory'))"
