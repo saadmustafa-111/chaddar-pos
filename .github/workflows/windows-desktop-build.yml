@@ -13,7 +13,7 @@ permissions:
 
 jobs:
   build:
-    runs-on: windows-latest
+    runs-on: windows-2022
 
     steps:
       - name: Checkout
@@ -58,6 +58,10 @@ jobs:
           Write-Host "=== Installed Visual Studio instances ==="
           Get-ChildItem "C:\Program Files (x86)\Microsoft Visual Studio" -ErrorAction SilentlyContinue | ForEach-Object { Write-Host "  $($_.FullName)" }
           Get-ChildItem "C:\Program Files\Microsoft Visual Studio" -ErrorAction SilentlyContinue | ForEach-Object { Write-Host "  $($_.FullName)" }
+          Write-Host ""
+          $vs2022Path = "C:\Program Files\Microsoft Visual Studio\2022\Enterprise"
+          $vs2022Exists = Test-Path $vs2022Path
+          Write-Host "VS2022 Enterprise exists at $vs2022Path : $vs2022Exists"
           Write-Host ""
           Write-Host "=== Rebuilding better-sqlite3 for Electron $electronVersion ==="
           Push-Location $apiDeployPath
