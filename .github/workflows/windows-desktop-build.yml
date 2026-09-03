@@ -50,8 +50,23 @@ jobs:
           if (-not $electronVersion) {
             $electronVersion = "33.2.1"
           }
+          Write-Host "=== Diagnostic Info ==="
+          Write-Host "Runner: $env:RUNNER_NAME"
+          Write-Host "OS: $([System.Environment]::OSVersion.VersionString)"
+          Write-Host "node-gyp version: $(node-gyp --version 2>&1)"
+          Write-Host "electron-rebuild version: $(npx @electron/rebuild --version 2>&1)"
+          Write-Host ""
+          Write-Host "=== Installed Visual Studio instances (vswhere) ==="
+          Get-ChildItem "C:\Program Files (x86)\Microsoft Visual Studio" -ErrorAction SilentlyContinue | ForEach-Object {
+            Write-Host "  $($_.FullName)"
+          }
+          Get-ChildItem "C:\Program Files\Microsoft Visual Studio" -ErrorAction SilentlyContinue | ForEach-Object {
+            Write-Host "  $($_.FullName)"
+          }
+          Write-Host ""
           $env:GYP_MSVS_VERSION = "2022"
-          Write-Host "Rebuilding better-sqlite3 for Electron $electronVersion with VS $env:GYP_MSVS_VERSION..."
+          Write-Host "=== Rebuilding better-sqlite3 for Electron $electronVersion ==="
+          Write-Host "GYP_MSVS_VERSION=$env:GYP_MSVS_VERSION"
           Push-Location $apiDeployPath
           try {
             npx --yes @electron/rebuild -f -w better-sqlite3 -v $electronVersion -m . 2>&1 | ForEach-Object { Write-Host "  $_" }
