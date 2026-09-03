@@ -70,12 +70,49 @@ jobs:
           $vs2022Exists = Test-Path $vs2022Path
           Write-Host "VS2022 Enterprise exists at $vs2022Path : $vs2022Exists"
           Write-Host ""
+          $bs3Path = Join-Path $apiDeployPath "node_modules\better-sqlite3"
+          $bs3Native = Join-Path $bs3Path "build\Release\better_sqlite3.node"
+          $bs3Prebuild = Join-Path $bs3Path "prebuilds\win32-x64.node"
+
+          Write-Host "=== Pre-rebuild binary info ==="
+          if (Test-Path $bs3Native) {
+            $fi = Get-Item $bs3Native
+            Write-Host "  native binary: $($fi.Length) bytes, $($fi.LastWriteTime)"
+          }
+          if (Test-Path $bs3Prebuild) {
+            $fi = Get-Item $bs3Prebuild
+            Write-Host "  prebuild:      $($fi.Length) bytes, $($fi.LastWriteTime)"
+          }
+
+          Write-Host ""
+          Write-Host "=== Deleting existing prebuilt binaries to force source rebuild ==="
+          Remove-Item -LiteralPath $bs3Native -Force -ErrorAction SilentlyContinue
+          Remove-Item -LiteralPath $bs3Prebuild -Force -ErrorAction SilentlyContinue
+          $prebuildCache = Join-Path $bs3Path ".prebundle"
+          Remove-Item -LiteralPath $prebuildCache -Recurse -Force -ErrorAction SilentlyContinue
+          Write-Host "Deleted. Remaining files in build/Release:"
+          Get-ChildItem (Join-Path $bs3Path "build\Release") -ErrorAction SilentlyContinue | ForEach-Object { Write-Host "  $($_.Name)" }
+
+          Write-Host ""
           Write-Host "=== Rebuilding better-sqlite3 from SOURCE for Electron $electronVersion ==="
           Push-Location $apiDeployPath
           try {
             npx --yes @electron/rebuild --build-from-source -f -w better-sqlite3 -v $electronVersion -m . 2>&1 | ForEach-Object { Write-Host "  $_" }
           } finally {
             Pop-Location
+          }
+
+          Write-Host ""
+          Write-Host "=== Post-rebuild binary info ==="
+          if (Test-Path $bs3Native) {
+            $fi = Get-Item $bs3Native
+            Write-Host "  native binary: $($fi.Length) bytes, $($fi.LastWriteTime)"
+            Write-Host "  ABI check via node:"
+            Push-Location $apiDeployPath
+            node -e "try{const m=require('./node_modules/better-sqlite3'); console.log('  version:', require('./node_modules/better-sqlite3/package.json').version); const db=new m.Database(':memory:'); console.log('  in-memory DB OK'); db.close();}catch(e){console.log('  ERROR:', e.message.split('\n')[0])}"
+            Pop-Location
+          } else {
+            Write-Host "  FATAL: native binary NOT FOUND after rebuild!"
           }
 
       - name: Build Web
