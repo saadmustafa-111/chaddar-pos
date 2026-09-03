@@ -268,22 +268,45 @@ jobs:
           Write-Host "Main JS: $apiMainJs"
           Write-Host "node: $(Get-Command node -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Source)"
           Write-Host "main.js exists: $(Test-Path $apiMainJs)"
+          Write-Host "Better-sqlite3: $(Test-Path (Join-Path $apiBase 'node_modules\better-sqlite3\build\Release\better_sqlite3.node'))"
 
-          Write-Host "=== Testing node ==="
-          $testOut = "$env:TEMP\node-test-$PID.log"
-          Start-Process -FilePath "node" -ArgumentList "--version" -NoNewWindow -Wait -RedirectStandardOutput $testOut
-          $nodeVer = Get-Content $testOut -Raw
-          Write-Host "node version: $nodeVer"
-          Remove-Item $testOut -Force -ErrorAction SilentlyContinue
+          Write-Host "=== Testing better-sqlite3 with node ==="
+          $bs3Test = @"
+try {
+  const Database = require('better-sqlite3');
+  const db = new Database(':memory:');
+  db.exec('CREATE TABLE t (id INTEGER)');
+  db.exec("INSERT INTO t VALUES (1), (2)");
+  const result = db.prepare('SELECT * FROM t').all();
+  console.log('BS3 OK:', JSON.stringify(result));
+  db.close();
+} catch(e) {
+  console.error('BS3 FAIL:', e.message);
+  process.exit(1);
+}
+"@
+          $bs3Out = "$env:TEMP\bs3-test-$PID.log"
+          $bs3Err = "$env:TEMP\bs3-err-$PID.log"
+          $bs3Proc = Start-Process -FilePath "node" -ArgumentList "-e", $bs3Test -WorkingDirectory $apiBase -PassThru `
+            -RedirectStandardOutput $bs3Out -RedirectStandardError $bs3Err -NoNewWindow
+          $bs3Proc.WaitForExit(10000)
+          $bs3Exit = $bs3Proc.ExitCode
+          $bs3OutContent = if (Test-Path $bs3Out) { Get-Content $bs3Out -Raw } else { "" }
+          $bs3ErrContent = if (Test-Path $bs3Err) { Get-Content $bs3Err -Raw } else { "" }
+          Write-Host "bs3 exit: $bs3Exit"
+          Write-Host "bs3 stdout: $bs3OutContent"
+          Write-Host "bs3 stderr: $bs3ErrContent"
+          $bs3Proc.Dispose()
+          Remove-Item $bs3Out,$bs3Err -Force -ErrorAction SilentlyContinue
 
-          Write-Host "=== Starting API process (20s wait) ==="
+          Write-Host "=== Starting API with trace-warnings ==="
           $apiEnv = @{
             'NODE_ENV'='production'; 'PORT'='4555'; 'DATABASE_PATH'=$dbPath;
             'ATTACHMENTS_DIR'="$dbDir\attachments"; 'UPLOADS_BASE_URL'='http://127.0.0.1:4555/uploads';
             'SESSION_SECRET'="diag-$PID"; 'DESKTOP_MODE'='true';
             'ALLOWED_ORIGIN'='*'; 'INITIAL_ADMIN_PASSWORD'='SteelCoil2026!'
           }
-          $apiProc = Start-Process -FilePath "node" -ArgumentList $apiMainJs -WorkingDirectory $apiBase -PassThru `
+          $apiProc = Start-Process -FilePath "node" -ArgumentList "--trace-warnings",$apiMainJs -WorkingDirectory $apiBase -PassThru `
             -RedirectStandardOutput $outFile -RedirectStandardError $errFile -EnvironmentVariables $apiEnv
           Write-Host "Started PID: $($apiProc.Id)"
           Start-Sleep 20
