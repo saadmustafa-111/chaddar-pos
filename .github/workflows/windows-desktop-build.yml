@@ -256,58 +256,80 @@ jobs:
         timeout-minutes: 2
         run: |
           $winUnpacked = Join-Path $env:GITHUB_WORKSPACE "apps\desktop\release\win-unpacked"
-          $electronExe = Get-ChildItem $winUnpacked -Filter "*.exe" -File | Select-Object -First 1 | Select-Object -ExpandProperty FullName
           $apiBase = Join-Path $winUnpacked "resources\api"
           $userDataPath = "$env:TEMP\chaddar-diag-$PID"
           $dbDir = "$userDataPath\data"
           $dbPath = "$dbDir\steelcoil.db"
           New-Item -ItemType Directory -Path $dbDir -Force | Out-Null
-          $outFile = "$env:TEMP\chaddar-out-$PID.txt"
-          $errFile = "$env:TEMP\chaddar-err-$PID.txt"
 
           $apiMainJs = Join-Path $apiBase "dist\main.js"
-          Write-Host "=== Starting API for startup diagnostic ==="
-          Write-Host "Electron: $electronExe"
-          Write-Host "API main: $apiMainJs"
+          Write-Host "=== API startup diagnostic ==="
+          Write-Host "Main JS: $apiMainJs"
 
-          $proc = Start-Process -FilePath $electronExe -ArgumentList $apiMainJs -WorkingDirectory $apiBase -PassThru `
-            -RedirectStandardOutput $outFile -RedirectStandardError $errFile -WindowStyle Hidden `
-            -EnvironmentVariables @{
-              'NODE_ENV'='production'; 'ELECTRON_RUN_AS_NODE'='1'; 'PORT'='4555';
-              'DATABASE_PATH'=$dbPath; 'ATTACHMENTS_DIR'="$dbDir\attachments";
-              'UPLOADS_BASE_URL'='http://127.0.0.1:4555/uploads'; 'SESSION_SECRET'="diag-$PID";
-              'DESKTOP_MODE'='true'; 'ALLOWED_ORIGIN'='*'; 'INITIAL_ADMIN_PASSWORD'='SteelCoil2026!'
-            }
-          Write-Host "Process started with PID: $($proc.Id)"
-          Start-Sleep 20
+          $psi = New-Object System.Diagnostics.ProcessStartInfo
+          $psi.FileName = "node"
+          $psi.Arguments = $apiMainJs
+          $psi.WorkingDirectory = $apiBase
+          $psi.UseShellExecute = $false
+          $psi.RedirectStandardOutput = $true
+          $psi.RedirectStandardError = $true
+          $psi.CreateNoWindow = $true
+          $psi.EnvironmentVariables['NODE_ENV'] = 'production'
+          $psi.EnvironmentVariables['PORT'] = '4555'
+          $psi.EnvironmentVariables['DATABASE_PATH'] = $dbPath
+          $psi.EnvironmentVariables['ATTACHMENTS_DIR'] = "$dbDir\attachments"
+          $psi.EnvironmentVariables['UPLOADS_BASE_URL'] = 'http://127.0.0.1:4555/uploads'
+          $psi.EnvironmentVariables['SESSION_SECRET'] = "diag-$PID"
+          $psi.EnvironmentVariables['DESKTOP_MODE'] = 'true'
+          $psi.EnvironmentVariables['ALLOWED_ORIGIN'] = '*'
+          $psi.EnvironmentVariables['INITIAL_ADMIN_PASSWORD'] = 'SteelCoil2026!'
+
+          $proc = [System.Diagnostics.Process]::Start($psi)
+          $procID = $proc.Id
+          Write-Host "Started PID $procID, waiting 25s..."
+          Start-Sleep 25
+
           $alive = -not $proc.HasExited
           $exitCode = -1
           if ($proc.HasExited) { $exitCode = $proc.ExitCode }
-          Write-Host "Process alive after 20s: $alive, ExitCode: $exitCode"
+          Write-Host "After 25s: alive=$alive exitCode=$exitCode"
 
-          $stdoutAll = if (Test-Path $outFile) { Get-Content $outFile -Raw } else { "" }
-          $stderrAll = if (Test-Path $errFile) { Get-Content $errFile -Raw } else { "" }
-          Write-Host "=== STDOUT ==="
-          Write-Host $stdoutAll
-          Write-Host "=== STDERR ==="
-          Write-Host $stderrAll
+          $outLines = @()
+          $errLines = @()
+          while ($proc.StandardOutput.Peek() -ge 0) {
+              $line = $proc.StandardOutput.ReadLine()
+              if ($line) { $outLines += $line; Write-Host "[out] $line" }
+          }
+          while ($proc.StandardError.Peek() -ge 0) {
+              $line = $proc.StandardError.ReadLine()
+              if ($line) { $errLines += $line; Write-Host "[err] $line" }
+          }
+          $stdoutAll = $outLines -join "`n"
+          $stderrAll = $errLines -join "`n"
 
-          Write-Host "=== Key checks ==="
-          Write-Host "Has 'Bootstrap': $($stdoutAll.Contains('[Bootstrap]'))"
-          Write-Host "Has 'Creating NestFactory': $($stdoutAll.Contains('Creating NestFactory'))"
-          Write-Host "Has 'NestFactory created': $($stdoutAll.Contains('NestFactory created'))"
-          Write-Host "Has 'About to listen': $($stdoutAll.Contains('About to listen'))"
-          Write-Host "Has 'app.listen': $($stdoutAll.Contains('app.listen'))"
-          Write-Host "Has 'Nest application successfully started': $($stdoutAll.Contains('Nest application successfully started'))"
-          Write-Host "Has 'Failed to start': $($stdoutAll.Contains('Failed to start') -or $stderrAll.Contains('Failed to start'))"
-
-          if ($alive) { Stop-Process $proc.Id -Force -ErrorAction SilentlyContinue }
-          Remove-Item $outFile,$errFile -Force -ErrorAction SilentlyContinue
-          Remove-Item $userDataPath -Recurse -Force -ErrorAction SilentlyContinue
-
-          if ($alive -and $stdoutAll.Contains('app.listen')) {
-              Write-Host "=== Startup diagnostic PASSED ==="
+          if ($alive) {
+              Write-Host "Process still alive - attempting HTTP check..."
+              try {
+                  $resp = Invoke-WebRequest -Uri "http://127.0.0.1:4555/health" -TimeoutSec 5 -UseBasicParsing
+                  Write-Host "HTTP status: $($resp.StatusCode)"
+                  $proc.Kill()
+                  $proc.Dispose()
+                  Remove-Item $userDataPath -Recurse -Force -ErrorAction SilentlyContinue
+                  Write-Host "=== Startup diagnostic PASSED ==="
+              } catch {
+                  Write-Host "HTTP check failed: $($_.Exception.Message)"
+                  $proc.Kill()
+                  $proc.Dispose()
+                  Remove-Item $userDataPath -Recurse -Force -ErrorAction SilentlyContinue
+                  Write-Host "=== Startup diagnostic FAILED (HTTP unreachable) ==="
+                  exit 1
+              }
           } else {
+              Write-Host "Process exited early with code $exitCode"
+              Write-Host "STDOUT: $stdoutAll"
+              Write-Host "STDERR: $stderrAll"
+              $proc.Dispose()
+              Remove-Item $userDataPath -Recurse -Force -ErrorAction SilentlyContinue
               Write-Host "=== Startup diagnostic FAILED ==="
               exit 1
           }
