@@ -262,6 +262,7 @@ jobs:
           $dbPath = "$dbDir\steelcoil.db"
           $outFile = "$env:TEMP\chaddar-out-$PID.log"
           $errFile = "$env:TEMP\chaddar-err-$PID.log"
+          $testFile = "$env:TEMP\bs3-test-$PID.js"
           New-Item -ItemType Directory -Path $dbDir -Force | Out-Null
 
           $apiMainJs = Join-Path $apiBase "dist\main.js"
@@ -270,24 +271,12 @@ jobs:
           Write-Host "main.js exists: $(Test-Path $apiMainJs)"
           Write-Host "Better-sqlite3: $(Test-Path (Join-Path $apiBase 'node_modules\better-sqlite3\build\Release\better_sqlite3.node'))"
 
+          $bs3Script = "const Database = require('better-sqlite3'); const db = new Database(':memory:'); db.exec('CREATE TABLE t (id INTEGER)'); db.exec('INSERT INTO t VALUES (1), (2)'); const result = db.prepare('SELECT * FROM t').all(); console.log('BS3 OK:', JSON.stringify(result)); db.close();"
+          Set-Content -Path $testFile -Value $bs3Script -NoNewline
           Write-Host "=== Testing better-sqlite3 with node ==="
-          $bs3Test = @"
-try {
-  const Database = require('better-sqlite3');
-  const db = new Database(':memory:');
-  db.exec('CREATE TABLE t (id INTEGER)');
-  db.exec("INSERT INTO t VALUES (1), (2)");
-  const result = db.prepare('SELECT * FROM t').all();
-  console.log('BS3 OK:', JSON.stringify(result));
-  db.close();
-} catch(e) {
-  console.error('BS3 FAIL:', e.message);
-  process.exit(1);
-}
-"@
           $bs3Out = "$env:TEMP\bs3-test-$PID.log"
           $bs3Err = "$env:TEMP\bs3-err-$PID.log"
-          $bs3Proc = Start-Process -FilePath "node" -ArgumentList "-e", $bs3Test -WorkingDirectory $apiBase -PassThru `
+          $bs3Proc = Start-Process -FilePath "node" -ArgumentList $testFile -WorkingDirectory $apiBase -PassThru `
             -RedirectStandardOutput $bs3Out -RedirectStandardError $bs3Err -NoNewWindow
           $bs3Proc.WaitForExit(10000)
           $bs3Exit = $bs3Proc.ExitCode
@@ -297,7 +286,7 @@ try {
           Write-Host "bs3 stdout: $bs3OutContent"
           Write-Host "bs3 stderr: $bs3ErrContent"
           $bs3Proc.Dispose()
-          Remove-Item $bs3Out,$bs3Err -Force -ErrorAction SilentlyContinue
+          Remove-Item $testFile,$bs3Out,$bs3Err -Force -ErrorAction SilentlyContinue
 
           Write-Host "=== Starting API with trace-warnings ==="
           $apiEnv = @{
