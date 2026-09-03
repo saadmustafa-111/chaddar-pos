@@ -195,6 +195,74 @@ jobs:
         run: pnpm --filter desktop dist --win nsis --x64
         timeout-minutes: 90
 
+      - name: Verify packaged better-sqlite3 binary
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $winUnpacked = Join-Path $env:GITHUB_WORKSPACE "apps\desktop\release\win-unpacked"
+          $electronExe = Get-ChildItem $winUnpacked -Filter "*.exe" -File | Select-Object -First 1 | Select-Object -ExpandProperty FullName
+          $apiBase = Join-Path $winUnpacked "resources\api"
+          $bs3Binary = Join-Path $apiBase "node_modules\better-sqlite3\build\Release\better_sqlite3.node"
+
+          Write-Host "=== Verifying packaged better-sqlite3 binary ==="
+          if (-not (Test-Path $bs3Binary)) {
+            throw "MISSING: $bs3Binary"
+          }
+          $fi = Get-Item $bs3Binary
+          Write-Host "Binary: $($fi.FullName)"
+          Write-Host "Size: $($fi.Length) bytes"
+          Write-Host "Modified: $($fi.LastWriteTime)"
+
+          Write-Host ""
+          Write-Host "=== Loading better-sqlite3 with Electron ==="
+          $testScript = @"
+          const Database = require('./node_modules/better-sqlite3/lib/index.js');
+          console.log('Node ABI:', process.versions.modules);
+          console.log('Electron version:', process.versions.electron);
+          console.log('Node version:', process.versions.node);
+          const db = new Database(':memory:');
+          console.log('In-memory DB opened OK');
+          const r = db.prepare('SELECT 1 as v').get();
+          console.log('Query result:', JSON.stringify(r));
+          db.close();
+          console.log('SQLite PASS');
+"@
+
+          $testScriptPath = Join-Path $apiBase "test_bs3_electron.js"
+          $testScript | Set-Content -Path $testScriptPath -Encoding UTF8
+
+          $psi = New-Object System.Diagnostics.ProcessStartInfo
+          $psi.FileName = $electronExe
+          $psi.Arguments = "test_bs3_electron.js"
+          $psi.WorkingDirectory = $apiBase
+          $psi.UseShellExecute = $false
+          $psi.RedirectStandardOutput = $true
+          $psi.RedirectStandardError = $true
+          $psi.CreateNoWindow = $true
+          $psi.EnvironmentVariables['ELECTRON_RUN_AS_NODE'] = '1'
+
+          $proc = [System.Diagnostics.Process]::Start($psi)
+          $didExit = $proc.WaitForExit(15000)
+          $stdout = ""
+          $stderr = ""
+          if ($didExit) {
+              $stdout = $proc.StandardOutput.ReadToEnd()
+              $stderr = $proc.StandardError.ReadToEnd()
+          } else {
+              $proc.Kill()
+              $stdout = "TIMEOUT"
+              $stderr = "TIMEOUT"
+          }
+          Write-Host "ExitCode: $($proc.ExitCode)"
+          Write-Host "STDOUT: $stdout"
+          if ($stderr) { Write-Host "STDERR: $stderr" }
+          if ($proc.ExitCode -ne 0) {
+              Remove-Item $testScriptPath -Force -ErrorAction SilentlyContinue
+              throw "better-sqlite3 binary check FAILED"
+          }
+          Remove-Item $testScriptPath -Force -ErrorAction SilentlyContinue
+          Write-Host "=== better-sqlite3 binary OK ==="
+
       - name: Runtime smoke test - packaged API and web
         shell: pwsh
         timeout-minutes: 5
