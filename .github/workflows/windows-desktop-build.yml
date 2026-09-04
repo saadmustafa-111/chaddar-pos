@@ -286,6 +286,8 @@ jobs:
             Write-Host "PORT: $apiPort"
             Write-Host "NODE_ENV: production"
             Write-Host "ELECTRON_RUN_AS_NODE: 1"
+            Write-Host "DATABASE_PATH: $dbPath"
+            Write-Host "ATTACHMENTS_DIR: $dbDir\attachments"
 
             $apipsi = New-Object System.Diagnostics.ProcessStartInfo
             $apipsi.FileName = $electronExe
@@ -306,6 +308,7 @@ jobs:
             $apipsi.EnvironmentVariables['ALLOWED_ORIGIN'] = '*'
             $apipsi.EnvironmentVariables['INITIAL_ADMIN_PASSWORD'] = 'SteelCoil2026!'
             $apiProc = [System.Diagnostics.Process]::Start($apipsi)
+            Write-Host "API PID: $($apiProc.Id)"
 
             Write-Host "=== Quick TypeORM file-DB test ==="
             Write-Host "Resolved smoke user data dir: $userDataPath"
@@ -381,27 +384,36 @@ jobs:
 
             Write-Host "Waiting for API health at $apiHealth ..."
             $apiReady = $false
+            $apiStdout = ""
+            $apiStderr = ""
+            $pollInterval = 3
             for ($i = 0; $i -lt 60; $i++) {
               Start-Sleep 1
               if ($apiProc.HasExited) {
-                $stdout = ""
-                $stderr = ""
-                try { $stdout = $apiProc.StandardOutput.ReadToEnd() } catch {}
-                try { $stderr = $apiProc.StandardError.ReadToEnd() } catch {}
-                Write-Host "=== PACKAGED API FAILURE ==="
-                Write-Host "Executable: $electronExe"
-                Write-Host "Main: $apiMainJs"
-                Write-Host "WorkingDirectory: $apiBase"
-                Write-Host "PORT: $apiPort"
-                Write-Host "NODE_ENV: production"
-                Write-Host "ELECTRON_RUN_AS_NODE: 1"
+                try { $apiStdout = $apiProc.StandardOutput.ReadToEnd() } catch {}
+                try { $apiStderr = $apiProc.StandardError.ReadToEnd() } catch {}
+                Write-Host "=== PACKAGED API PROCESS EXITED ==="
+                Write-Host "API PID: $($apiProc.Id)"
                 Write-Host "ExitCode: $($apiProc.ExitCode)"
                 Write-Host "=== STDOUT ==="
-                Write-Host $stdout
+                Write-Host $apiStdout
                 Write-Host "=== STDERR ==="
-                Write-Host $stderr
-                Write-Host "=============================="
+                Write-Host $apiStderr
+                Write-Host "DATABASE_PATH: $dbPath"
+                Write-Host "ATTACHMENTS_DIR: $dbDir\attachments"
+                Write-Host "======================================"
                 throw "API process exited early with code $($apiProc.ExitCode)"
+              }
+              if (($i % $pollInterval) -eq 0) {
+                try {
+                  $apiStdout = $apiProc.StandardOutput.ReadToEnd()
+                  $apiStderr = $apiProc.StandardError.ReadToEnd()
+                  if ($apiStdout -or $apiStderr) {
+                    Write-Host "--- API output at ${i}s ---"
+                    if ($apiStdout) { Write-Host "STDOUT: $apiStdout" }
+                    if ($apiStderr) { Write-Host "STDERR: $apiStderr" }
+                  }
+                } catch {}
               }
               try {
                 $resp = Invoke-WebRequest -Uri $apiHealth -TimeoutSec 2 -UseBasicParsing -ErrorAction SilentlyContinue
@@ -412,7 +424,17 @@ jobs:
                 }
               } catch {}
             }
-            if (-not $apiReady) { throw "API did not respond at $apiHealth after 60s" }
+            if (-not $apiReady) {
+              try { $apiStdout = $apiProc.StandardOutput.ReadToEnd() } catch {}
+              try { $apiStderr = $apiProc.StandardError.ReadToEnd() } catch {}
+              Write-Host "=== PACKAGED API DID NOT RESPOND ==="
+              Write-Host "DATABASE_PATH: $dbPath"
+              Write-Host "ATTACHMENTS_DIR: $dbDir\attachments"
+              if ($apiStdout) { Write-Host "STDOUT: $apiStdout" }
+              if ($apiStderr) { Write-Host "STDERR: $apiStderr" }
+              Write-Host "======================================"
+              throw "API did not respond at $apiHealth after 60s"
+            }
 
             $webServerJs = Join-Path $webBase ".next\standalone\apps\web\server.js"
             $webWorkDir = Join-Path $webBase ".next\standalone\apps\web"
