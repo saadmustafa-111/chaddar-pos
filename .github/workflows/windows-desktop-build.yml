@@ -404,6 +404,7 @@ jobs:
               }
               try {
                 $resp = Invoke-WebRequest -Uri $apiHealth -TimeoutSec 2 -UseBasicParsing -ErrorAction SilentlyContinue
+                Write-Host "--- health response at ${i}s: status=$($resp.StatusCode)"
                 if ($resp.StatusCode -eq 200 -or $resp.StatusCode -eq 201) {
                   $apiReady = $true
                   Write-Host "API health OK (attempt $($i+1))"
