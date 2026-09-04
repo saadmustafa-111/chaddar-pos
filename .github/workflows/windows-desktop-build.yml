@@ -384,14 +384,12 @@ jobs:
 
             Write-Host "Waiting for API health at $apiHealth ..."
             $apiReady = $false
-            $apiStdout = ""
-            $apiStderr = ""
             $pollInterval = 3
             for ($i = 0; $i -lt 60; $i++) {
               Start-Sleep 1
               if ($apiProc.HasExited) {
-                try { $apiStdout = $apiProc.StandardOutput.ReadToEnd() } catch {}
-                try { $apiStderr = $apiProc.StandardError.ReadToEnd() } catch {}
+                $apiStdout = $apiProc.StandardOutput.ReadToEnd()
+                $apiStderr = $apiProc.StandardError.ReadToEnd()
                 Write-Host "=== PACKAGED API PROCESS EXITED ==="
                 Write-Host "API PID: $($apiProc.Id)"
                 Write-Host "ExitCode: $($apiProc.ExitCode)"
@@ -404,17 +402,6 @@ jobs:
                 Write-Host "======================================"
                 throw "API process exited early with code $($apiProc.ExitCode)"
               }
-              if (($i % $pollInterval) -eq 0) {
-                try {
-                  $apiStdout = $apiProc.StandardOutput.ReadToEnd()
-                  $apiStderr = $apiProc.StandardError.ReadToEnd()
-                  if ($apiStdout -or $apiStderr) {
-                    Write-Host "--- API output at ${i}s ---"
-                    if ($apiStdout) { Write-Host "STDOUT: $apiStdout" }
-                    if ($apiStderr) { Write-Host "STDERR: $apiStderr" }
-                  }
-                } catch {}
-              }
               try {
                 $resp = Invoke-WebRequest -Uri $apiHealth -TimeoutSec 2 -UseBasicParsing -ErrorAction SilentlyContinue
                 if ($resp.StatusCode -eq 200 -or $resp.StatusCode -eq 201) {
@@ -423,10 +410,13 @@ jobs:
                   break
                 }
               } catch {}
+              if (($i % $pollInterval) -eq 0) {
+                Write-Host "--- still waiting at ${i}s, process alive: $([int](-not $apiProc.HasExited))"
+              }
             }
             if (-not $apiReady) {
-              try { $apiStdout = $apiProc.StandardOutput.ReadToEnd() } catch {}
-              try { $apiStderr = $apiProc.StandardError.ReadToEnd() } catch {}
+              $apiStdout = $apiProc.StandardOutput.ReadToEnd()
+              $apiStderr = $apiProc.StandardError.ReadToEnd()
               Write-Host "=== PACKAGED API DID NOT RESPOND ==="
               Write-Host "DATABASE_PATH: $dbPath"
               Write-Host "ATTACHMENTS_DIR: $dbDir\attachments"
