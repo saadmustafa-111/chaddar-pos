@@ -1,8 +1,61 @@
 import { TypeOrmModuleOptions } from '@nestjs/typeorm';
+import path from 'node:path';
+import fs from 'node:fs';
+
+function validateDatabasePath(dbPath: string | undefined): string {
+  if (!dbPath || typeof dbPath !== 'string') {
+    throw new Error(
+      `FATAL: DATABASE_PATH is missing or empty. Received: ${JSON.stringify(dbPath)}`,
+    );
+  }
+
+  const resolved = path.resolve(dbPath);
+
+  if (resolved === path.parse(resolved).root) {
+    throw new Error(
+      `FATAL: DATABASE_PATH resolves to filesystem root '${resolved}'. Path must be a file path, not a drive root. Received: ${JSON.stringify(dbPath)}`,
+    );
+  }
+
+  const dir = path.dirname(resolved);
+  if (dir === path.parse(dir).root) {
+    throw new Error(
+      `FATAL: DATABASE_PATH parent directory is filesystem root '${dir}'. Received: ${JSON.stringify(dbPath)}`,
+    );
+  }
+
+  if (!path.isAbsolute(resolved)) {
+    throw new Error(
+      `FATAL: DATABASE_PATH must be absolute in production. Received: ${JSON.stringify(dbPath)}`,
+    );
+  }
+
+  return resolved;
+}
+
+function ensureDbParentDir(dbPath: string): void {
+  const dir = path.dirname(dbPath);
+  try {
+    if (!fs.existsSync(dir)) {
+      fs.mkdirSync(dir, { recursive: true });
+    }
+  } catch (err) {
+    throw new Error(
+      `FATAL: Cannot create DB parent directory '${dir}' for DATABASE_PATH '${dbPath}': ${err instanceof Error ? err.message : String(err)}`,
+    );
+  }
+}
+
+const rawDbPath = process.env.DATABASE_PATH;
+const validatedDbPath = validateDatabasePath(rawDbPath);
+ensureDbParentDir(validatedDbPath);
+
+console.log('[DB Config] Validated DATABASE_PATH:', validatedDbPath);
+console.log('[DB Config] DB parent directory:', path.dirname(validatedDbPath));
 
 export const databaseConfig: TypeOrmModuleOptions = {
   type: 'better-sqlite3',
-  database: process.env.DATABASE_PATH,
+  database: validatedDbPath,
 
   autoLoadEntities: true,
 

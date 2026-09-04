@@ -7,6 +7,7 @@ console.log('[Bootstrap] Starting...');
 console.log('[Bootstrap] PORT:', process.env.PORT);
 console.log('[Bootstrap] DATABASE_PATH:', process.env.DATABASE_PATH);
 console.log('[Bootstrap] NODE_ENV:', process.env.NODE_ENV);
+console.log('[Bootstrap] ATTACHMENTS_DIR:', process.env.ATTACHMENTS_DIR);
 
 async function bootstrap() {
   console.log('[Bootstrap] Creating NestFactory...');

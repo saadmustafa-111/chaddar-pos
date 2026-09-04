@@ -15,7 +15,13 @@ export class LocalStorageService implements IStorageService {
   private readonly baseUrl: string;
 
   constructor() {
-    this.uploadDir = join(process.cwd(), 'data', 'attachments');
+    const attachmentsDir = process.env.ATTACHMENTS_DIR;
+    if (!attachmentsDir) {
+      throw new Error(
+        'FATAL: ATTACHMENTS_DIR environment variable is not set. Cannot determine upload directory.',
+      );
+    }
+    this.uploadDir = attachmentsDir;
     this.baseUrl = process.env.ATTACHMENTS_BASE_URL ?? '/api/v1/attachments';
   }
 
