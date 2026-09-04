@@ -320,35 +320,33 @@ jobs:
                 Write-Host "DB parent created: $dbDirExists"
             }
             $quickTestPath = Join-Path $apiBase "quick_test.js"
-            $quickCode = @"
-const path = require('path');
-const dbPath = process.env.DATABASE_PATH;
-console.log('Quick test DATABASE_PATH:', dbPath);
-console.log('Quick test process.cwd():', process.cwd());
-if (!dbPath) {
-  console.error('DB ERROR: DATABASE_PATH environment variable is not set');
-  process.exit(1);
-}
-const fs = require('fs');
-const dbDir = path.dirname(dbPath);
-console.log('Quick test dbDir:', dbDir);
-if (!fs.existsSync(dbDir)) {
-  console.error('DB ERROR: DB parent directory does not exist:', dbDir);
-  process.exit(1);
-}
-const { DataSource } = require('typeorm');
-const ds = new DataSource({type:'better-sqlite3',database:dbPath,synchronize:false,migrationsRun:false});
-ds.initialize().then(()=>{
-  console.log('DB INIT OK');
-  return ds.query('SELECT 1');
-}).then(r=>{
-  console.log('DB QUERY OK:', JSON.stringify(r));
-  ds.destroy().then(()=>process.exit(0));
-}).catch(e=>{
-  console.error('DB ERROR:', e.message);
-  process.exit(1);
-});
-"@
+            $quickCode = "const path = require('path');`n" +
+              "const dbPath = process.env.DATABASE_PATH;`n" +
+              "console.log('Quick test DATABASE_PATH:', dbPath);`n" +
+              "console.log('Quick test process.cwd():', process.cwd());`n" +
+              "if (!dbPath) {`n" +
+              "  console.error('DB ERROR: DATABASE_PATH environment variable is not set');`n" +
+              "  process.exit(1);`n" +
+              "}`n" +
+              "const fs = require('fs');`n" +
+              "const dbDir = path.dirname(dbPath);`n" +
+              "console.log('Quick test dbDir:', dbDir);`n" +
+              "if (!fs.existsSync(dbDir)) {`n" +
+              "  console.error('DB ERROR: DB parent directory does not exist:', dbDir);`n" +
+              "  process.exit(1);`n" +
+              "}`n" +
+              "const { DataSource } = require('typeorm');`n" +
+              "const ds = new DataSource({type:'better-sqlite3',database:dbPath,synchronize:false,migrationsRun:false});`n" +
+              "ds.initialize().then(()=>{`n" +
+              "  console.log('DB INIT OK');`n" +
+              "  return ds.query('SELECT 1');`n" +
+              "}).then(r=>{`n" +
+              "  console.log('DB QUERY OK:', JSON.stringify(r));`n" +
+              "  ds.destroy().then(()=>process.exit(0));`n" +
+              "}).catch(e=>{`n" +
+              "  console.error('DB ERROR:', e.message);`n" +
+              "  process.exit(1);`n" +
+              "});"
             Set-Content -Path $quickTestPath -Value $quickCode -Encoding UTF8
             $qtPsi = New-Object System.Diagnostics.ProcessStartInfo
             $qtPsi.FileName = $electronExe
