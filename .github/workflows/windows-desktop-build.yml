@@ -384,7 +384,7 @@ jobs:
 
             Write-Host "Waiting for API health at $apiHealth ..."
             $apiReady = $false
-            $pollInterval = 3
+            $lastMarker = ""
             for ($i = 0; $i -lt 60; $i++) {
               Start-Sleep 1
               if ($apiProc.HasExited) {
@@ -409,15 +409,23 @@ jobs:
                   Write-Host "API health OK (attempt $($i+1))"
                   break
                 }
-              } catch {}
-              if (($i % $pollInterval) -eq 0) {
-                Write-Host "--- still waiting at ${i}s, process alive: $([int](-not $apiProc.HasExited))"
+              } catch {
+                Write-Host "--- health check error at ${i}s: $($_.Exception.Message)"
               }
+              $apiStdout = $apiProc.StandardOutput.ReadToEnd()
+              $apiStderr = $apiProc.StandardError.ReadToEnd()
+              if ($apiStdout) {
+                Write-Host "[$i] STDOUT: $apiStdout"
+                $lines = $apiStdout -split "`n"
+                if ($lines.Count -gt 0) { $lastMarker = $lines[$lines.Count - 1] }
+              }
+              if ($apiStderr) { Write-Host "[$i] STDERR: $apiStderr" }
             }
             if (-not $apiReady) {
               $apiStdout = $apiProc.StandardOutput.ReadToEnd()
               $apiStderr = $apiProc.StandardError.ReadToEnd()
               Write-Host "=== PACKAGED API DID NOT RESPOND ==="
+              Write-Host "Last bootstrap marker: $lastMarker"
               Write-Host "DATABASE_PATH: $dbPath"
               Write-Host "ATTACHMENTS_DIR: $dbDir\attachments"
               if ($apiStdout) { Write-Host "STDOUT: $apiStdout" }
