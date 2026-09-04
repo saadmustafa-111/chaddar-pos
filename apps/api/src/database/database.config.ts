@@ -2,6 +2,15 @@ import { TypeOrmModuleOptions } from '@nestjs/typeorm';
 import path from 'node:path';
 import fs from 'node:fs';
 
+const isProduction = process.env.NODE_ENV === 'production';
+const DEV_DEFAULT_DB = path.resolve(
+  __dirname,
+  '..',
+  '..',
+  'data',
+  'steelcoil.db',
+);
+
 function validateDatabasePath(dbPath: string | undefined): string {
   if (!dbPath || typeof dbPath !== 'string') {
     throw new Error(
@@ -24,7 +33,7 @@ function validateDatabasePath(dbPath: string | undefined): string {
     );
   }
 
-  if (!path.isAbsolute(resolved)) {
+  if (isProduction && !path.isAbsolute(resolved)) {
     throw new Error(
       `FATAL: DATABASE_PATH must be absolute in production. Received: ${JSON.stringify(dbPath)}`,
     );
@@ -47,15 +56,34 @@ function ensureDbParentDir(dbPath: string): void {
 }
 
 const rawDbPath = process.env.DATABASE_PATH;
-const validatedDbPath = validateDatabasePath(rawDbPath);
-ensureDbParentDir(validatedDbPath);
+let resolvedDbPath: string;
 
-console.log('[DB Config] Validated DATABASE_PATH:', validatedDbPath);
-console.log('[DB Config] DB parent directory:', path.dirname(validatedDbPath));
+if (isProduction) {
+  if (!rawDbPath) {
+    throw new Error(
+      `FATAL: DATABASE_PATH is required in production but is not set.`,
+    );
+  }
+  resolvedDbPath = validateDatabasePath(rawDbPath);
+  ensureDbParentDir(resolvedDbPath);
+} else {
+  if (rawDbPath) {
+    resolvedDbPath = validateDatabasePath(rawDbPath);
+    ensureDbParentDir(resolvedDbPath);
+    console.log('[DB Config] Database mode: explicit-env');
+  } else {
+    resolvedDbPath = DEV_DEFAULT_DB;
+    ensureDbParentDir(resolvedDbPath);
+    console.log('[DB Config] Database mode: development-default');
+  }
+}
+
+console.log('[DB Config] NODE_ENV:', process.env.NODE_ENV);
+console.log('[DB Config] Resolved DATABASE_PATH:', resolvedDbPath);
 
 export const databaseConfig: TypeOrmModuleOptions = {
   type: 'better-sqlite3',
-  database: validatedDbPath,
+  database: resolvedDbPath,
 
   autoLoadEntities: true,
 
