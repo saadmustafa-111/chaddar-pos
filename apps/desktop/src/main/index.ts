@@ -162,7 +162,11 @@ async function startApiServer(apiPort: number): Promise<ServerProcess> {
 // ─── Start Web server ─────────────────────────────────────────────────────────
 async function startWebServer(webPort: number, apiUrl: string): Promise<ServerProcess> {
   const webPath = getResourcePath('web');
-  const nextServerPath = path.join(webPath, '.next', 'standalone', 'apps', 'web', 'server.js');
+  // extraResources copies the contents of .next/standalone into resources/web.
+  const nextServerPath = path.join(webPath, 'apps', 'web', 'server.js');
+  if (!fs.existsSync(nextServerPath)) {
+    throw new Error(`Packaged web entry point is missing: ${nextServerPath}`);
+  }
 
   log.info(`Starting Next.js server on port ${webPort}...`);
   log.info(`Next.js standalone path: ${nextServerPath}`);

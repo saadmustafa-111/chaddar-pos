@@ -327,8 +327,11 @@ jobs:
             }
             if (-not $apiReady) { throw "API did not respond at $apiHealth after 60s" }
 
-            $webServerJs = Join-Path $webBase ".next\standalone\apps\web\server.js"
-            $webWorkDir = Join-Path $webBase ".next\standalone\apps\web"
+            $webServerJs = Join-Path $webBase "apps\web\server.js"
+            if (-not (Test-Path -LiteralPath $webServerJs -PathType Leaf)) {
+              throw "Packaged web entry point is missing: $webServerJs"
+            }
+            $webWorkDir = Split-Path -Parent $webServerJs
             Write-Host "Starting packaged Next.js web on port $webPort..."
             Write-Host "Executable: $electronExe"
             Write-Host "Main: $webServerJs"
