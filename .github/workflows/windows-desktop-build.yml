@@ -229,6 +229,9 @@ jobs:
             $apipsi.EnvironmentVariables['ALLOWED_ORIGIN'] = '*'
             $apipsi.EnvironmentVariables['INITIAL_ADMIN_PASSWORD'] = 'SteelCoil2026!'
             $apiProc = [System.Diagnostics.Process]::Start($apipsi)
+            # Drain both pipes while Nest starts; synchronous ReadToEnd waits for process exit.
+            $apiStdoutTask = $apiProc.StandardOutput.ReadToEndAsync()
+            $apiStderrTask = $apiProc.StandardError.ReadToEndAsync()
             Write-Host "API PID: $($apiProc.Id)"
 
             Write-Host "=== Quick TypeORM file-DB test ==="
@@ -305,22 +308,9 @@ jobs:
 
             Write-Host "Waiting for API health at $apiHealth ..."
             $apiReady = $false
-            $lastMarker = ""
             for ($i = 0; $i -lt 60; $i++) {
               Start-Sleep 1
               if ($apiProc.HasExited) {
-                $apiStdout = $apiProc.StandardOutput.ReadToEnd()
-                $apiStderr = $apiProc.StandardError.ReadToEnd()
-                Write-Host "=== PACKAGED API PROCESS EXITED ==="
-                Write-Host "API PID: $($apiProc.Id)"
-                Write-Host "ExitCode: $($apiProc.ExitCode)"
-                Write-Host "=== STDOUT ==="
-                Write-Host $apiStdout
-                Write-Host "=== STDERR ==="
-                Write-Host $apiStderr
-                Write-Host "DATABASE_PATH: $dbPath"
-                Write-Host "ATTACHMENTS_DIR: $dbDir\attachments"
-                Write-Host "======================================"
                 throw "API process exited early with code $($apiProc.ExitCode)"
               }
               try {
@@ -334,27 +324,8 @@ jobs:
               } catch {
                 Write-Host "--- health check error at ${i}s: $($_.Exception.Message)"
               }
-              $apiStdout = $apiProc.StandardOutput.ReadToEnd()
-              $apiStderr = $apiProc.StandardError.ReadToEnd()
-              if ($apiStdout) {
-                Write-Host "[$i] STDOUT: $apiStdout"
-                $lines = $apiStdout -split "`n"
-                if ($lines.Count -gt 0) { $lastMarker = $lines[$lines.Count - 1] }
-              }
-              if ($apiStderr) { Write-Host "[$i] STDERR: $apiStderr" }
             }
-            if (-not $apiReady) {
-              $apiStdout = $apiProc.StandardOutput.ReadToEnd()
-              $apiStderr = $apiProc.StandardError.ReadToEnd()
-              Write-Host "=== PACKAGED API DID NOT RESPOND ==="
-              Write-Host "Last bootstrap marker: $lastMarker"
-              Write-Host "DATABASE_PATH: $dbPath"
-              Write-Host "ATTACHMENTS_DIR: $dbDir\attachments"
-              if ($apiStdout) { Write-Host "STDOUT: $apiStdout" }
-              if ($apiStderr) { Write-Host "STDERR: $apiStderr" }
-              Write-Host "======================================"
-              throw "API did not respond at $apiHealth after 60s"
-            }
+            if (-not $apiReady) { throw "API did not respond at $apiHealth after 60s" }
 
             $webServerJs = Join-Path $webBase ".next\standalone\apps\web\server.js"
             $webWorkDir = Join-Path $webBase ".next\standalone\apps\web"
@@ -417,7 +388,17 @@ jobs:
 
             Write-Host "SMOKE TEST PASSED"
           } finally {
-            if ($apiProc -and -not $apiProc.HasExited) { Stop-Process -Id $apiProc.Id -Force -ErrorAction SilentlyContinue }
+            if ($apiProc) {
+              $apiStoppedByTest = -not $apiProc.HasExited
+              if ($apiStoppedByTest) { Stop-Process -Id $apiProc.Id -Force -ErrorAction SilentlyContinue }
+              $apiProc.WaitForExit()
+              Write-Host "=== COMPLETE API CHILD OUTPUT ==="
+              Write-Host "ExitCode: $($apiProc.ExitCode); stopped by smoke cleanup: $apiStoppedByTest; signal: unavailable (Windows Process API)"
+              Write-Host "=== STDOUT ==="
+              Write-Host ($apiStdoutTask.GetAwaiter().GetResult())
+              Write-Host "=== STDERR ==="
+              Write-Host ($apiStderrTask.GetAwaiter().GetResult())
+            }
             if ($webProc -and -not $webProc.HasExited) { Stop-Process -Id $webProc.Id -Force -ErrorAction SilentlyContinue }
             Remove-Item $userDataPath -Recurse -Force -ErrorAction SilentlyContinue
           }
