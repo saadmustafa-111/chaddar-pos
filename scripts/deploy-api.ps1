@@ -6,6 +6,23 @@ param(
 
 $ErrorActionPreference = 'Stop'
 
+$repoPath = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
+$SourceApiPath = [IO.Path]::GetFullPath((Join-Path $repoPath $SourceApiPath))
+$DeployPath = [IO.Path]::GetFullPath((Join-Path $repoPath $DeployPath))
+$StagingPath = [IO.Path]::GetFullPath($StagingPath)
+# Validate cleanup targets before any recursive removal.
+if ($DeployPath -ne (Join-Path $SourceApiPath 'deploy')) {
+    throw 'DeployPath must be the deploy directory inside SourceApiPath.'
+}
+if (-not $SourceApiPath.StartsWith($repoPath + [IO.Path]::DirectorySeparatorChar, [StringComparison]::OrdinalIgnoreCase)) {
+    throw 'SourceApiPath must be inside the repository.'
+}
+$tempRoot = [IO.Path]::GetFullPath($env:TEMP).TrimEnd('\') + '\'
+if (-not $StagingPath.StartsWith($tempRoot, [StringComparison]::OrdinalIgnoreCase) -or
+    [IO.Path]::GetFileName($StagingPath) -ne 'steelchaddar-api-staging') {
+    throw 'StagingPath must be a steelchaddar-api-staging directory inside TEMP.'
+}
+
 function Get-ExternalLinks {
     param([string]$Path, [string]$BasePath)
     $links = @()
@@ -40,6 +57,14 @@ New-Item -ItemType Directory -Path $DeployPath -Force | Out-Null
 
 Write-Host "Reading source package.json..."
 $sourcePackageJson = Get-Content "$SourceApiPath\package.json" | ConvertFrom-Json
+# Pin SQLite to the API importer's resolution, not the semver range in package.json.
+$lockText = Get-Content (Join-Path $repoPath 'pnpm-lock.yaml') -Raw
+$apiImporter = [regex]::Match($lockText, '(?ms)^  apps/api:\r?\n(?<body>.*?)(?=^  \S|\z)')
+$sqliteResolution = [regex]::Match($apiImporter.Groups['body'].Value, '(?m)^      better-sqlite3:\r?\n        specifier: [^\r\n]+\r?\n        version: (?<version>\d+\.\d+\.\d+)\r?$')
+if (-not $sqliteResolution.Success) { throw 'Cannot resolve better-sqlite3 from the API lockfile importer.' }
+$sqliteVersion = $sqliteResolution.Groups['version'].Value
+$sourcePackageJson.dependencies.'better-sqlite3' = $sqliteVersion
+Write-Host "Locked better-sqlite3 version: $sqliteVersion"
 
 $prodPackageJson = [PSCustomObject]@{
     name = $sourcePackageJson.name
@@ -61,15 +86,22 @@ $prodPackageJson | ConvertTo-Json -Depth 10 | Set-Content "$StagingPath\package.
 Write-Host "Installing production dependencies using npm (creates actual copies, not junctions)..."
 Push-Location $StagingPath
 try {
+    # Windows PowerShell treats native stderr warnings as errors under Stop.
+    $ErrorActionPreference = 'Continue'
     npm install --omit=dev --ignore-scripts --legacy-peer-deps 2>&1 | ForEach-Object { Write-Host "  $_" }
-    if ($LASTEXITCODE -ne 0) {
-        throw "npm install failed with exit code $LASTEXITCODE"
+    $installExitCode = $LASTEXITCODE
+    $ErrorActionPreference = 'Stop'
+    if ($installExitCode -ne 0) {
+        throw "npm install failed with exit code $installExitCode"
     }
 } finally {
+    $ErrorActionPreference = 'Stop'
     Pop-Location
 }
 
 Write-Host "Copying dist folder..."
+$stagedSqlite = Get-Content "$StagingPath\node_modules\better-sqlite3\package.json" | ConvertFrom-Json
+if ($stagedSqlite.version -ne $sqliteVersion) { throw 'Staged better-sqlite3 does not match the API lockfile.' }
 $sourceDist = "$SourceApiPath\dist"
 if (-not (Test-Path -LiteralPath $sourceDist)) {
     throw "Source dist folder not found: $sourceDist"
@@ -86,7 +118,9 @@ if ($externalLinks.Count -gt 0) {
 }
 
 Write-Host "Cleaning deploy folder..."
-Remove-Item -LiteralPath "$DeployPath\*" -Recurse -Force -ErrorAction SilentlyContinue
+Get-ChildItem -LiteralPath $DeployPath -Force | ForEach-Object {
+    Remove-Item -LiteralPath $_.FullName -Recurse -Force
+}
 
 Write-Host "Copying staging to deploy (materializing any junctions)..."
 Get-ChildItem -LiteralPath $StagingPath -ErrorAction SilentlyContinue | ForEach-Object {
@@ -139,4 +173,4 @@ Write-Host "=== Deployment complete ==="
 Write-Host ""
 Write-Host "NOTE: If the deployed app uses Electron's Node runtime (ELECTRON_RUN_AS_NODE),"
 Write-Host "native modules may need to be rebuilt for Electron ABI compatibility."
-Write-Host "Run: npx --yes electron-rebuild -f -w better-sqlite3"
+Write-Host "The desktop afterPack hook rebuilds better-sqlite3 for Electron and tests API health."

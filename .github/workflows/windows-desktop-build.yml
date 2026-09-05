@@ -27,11 +27,11 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '22'
           cache: 'pnpm'
 
       - name: Install dependencies
-        run: pnpm install --ignore-scripts
+        run: pnpm install --frozen-lockfile --ignore-scripts
 
       - name: Build API
         run: pnpm --filter api build
@@ -46,75 +46,6 @@ jobs:
         with:
           python-version: '3.11'
 
-      - name: Rebuild native modules in deployed API for Electron
-        shell: pwsh
-        run: |
-          $apiDeployPath = Join-Path $env:GITHUB_WORKSPACE "apps\api\deploy"
-          $electronVersion = (Get-Content "$env:GITHUB_WORKSPACE\apps\desktop\node_modules\electron\package.json" -ErrorAction SilentlyContinue | ConvertFrom-Json | Select-Object -ExpandProperty version)
-          if (-not $electronVersion) {
-            $electronVersion = "33.2.1"
-          }
-          $env:GYP_MSVS_VERSION = "2022"
-          $env:pythonPath = (Get-Command python -ErrorAction SilentlyContinue).Source
-          Write-Host "=== Diagnostic Info ==="
-          Write-Host "Runner: $env:RUNNER_NAME"
-          Write-Host "OS: $([System.Environment]::OSVersion.VersionString)"
-          Write-Host "GYP_MSVS_VERSION=$env:GYP_MSVS_VERSION"
-          Write-Host "Python: $env:pythonPath"
-          Write-Host ""
-          Write-Host "=== Installed Visual Studio instances ==="
-          Get-ChildItem "C:\Program Files (x86)\Microsoft Visual Studio" -ErrorAction SilentlyContinue | ForEach-Object { Write-Host "  $($_.FullName)" }
-          Get-ChildItem "C:\Program Files\Microsoft Visual Studio" -ErrorAction SilentlyContinue | ForEach-Object { Write-Host "  $($_.FullName)" }
-          Write-Host ""
-          $vs2022Path = "C:\Program Files\Microsoft Visual Studio\2022\Enterprise"
-          $vs2022Exists = Test-Path $vs2022Path
-          Write-Host "VS2022 Enterprise exists at $vs2022Path : $vs2022Exists"
-          Write-Host ""
-          $bs3Path = Join-Path $apiDeployPath "node_modules\better-sqlite3"
-          $bs3Native = Join-Path $bs3Path "build\Release\better_sqlite3.node"
-          $bs3Prebuild = Join-Path $bs3Path "prebuilds\win32-x64.node"
-
-          Write-Host "=== Pre-rebuild binary info ==="
-          if (Test-Path $bs3Native) {
-            $fi = Get-Item $bs3Native
-            Write-Host "  native binary: $($fi.Length) bytes, $($fi.LastWriteTime)"
-          }
-          if (Test-Path $bs3Prebuild) {
-            $fi = Get-Item $bs3Prebuild
-            Write-Host "  prebuild:      $($fi.Length) bytes, $($fi.LastWriteTime)"
-          }
-
-          Write-Host ""
-          Write-Host "=== Deleting existing prebuilt binaries to force source rebuild ==="
-          Remove-Item -LiteralPath $bs3Native -Force -ErrorAction SilentlyContinue
-          Remove-Item -LiteralPath $bs3Prebuild -Force -ErrorAction SilentlyContinue
-          $prebuildCache = Join-Path $bs3Path ".prebundle"
-          Remove-Item -LiteralPath $prebuildCache -Recurse -Force -ErrorAction SilentlyContinue
-          Write-Host "Deleted. Remaining files in build/Release:"
-          Get-ChildItem (Join-Path $bs3Path "build\Release") -ErrorAction SilentlyContinue | ForEach-Object { Write-Host "  $($_.Name)" }
-
-          Write-Host ""
-          Write-Host "=== Rebuilding better-sqlite3 from SOURCE for Electron $electronVersion ==="
-          Push-Location $apiDeployPath
-          try {
-            npx --yes @electron/rebuild --build-from-source -f -w better-sqlite3 -v $electronVersion -m . 2>&1 | ForEach-Object { Write-Host "  $_" }
-          } finally {
-            Pop-Location
-          }
-
-          Write-Host ""
-          Write-Host "=== Post-rebuild binary info ==="
-          if (Test-Path $bs3Native) {
-            $fi = Get-Item $bs3Native
-            Write-Host "  native binary: $($fi.Length) bytes, $($fi.LastWriteTime)"
-            Write-Host "  ABI check via node:"
-            Push-Location $apiDeployPath
-            node -e "try{const m=require('./node_modules/better-sqlite3'); console.log('  version:', require('./node_modules/better-sqlite3/package.json').version); const db=new m.Database(':memory:'); console.log('  in-memory DB OK'); db.close();}catch(e){console.log('  ERROR:', e.message.split('\n')[0])}"
-            Pop-Location
-          } else {
-            Write-Host "  FATAL: native binary NOT FOUND after rebuild!"
-          }
-
       - name: Build Web
         shell: pwsh
         run: |
@@ -124,9 +55,6 @@ jobs:
 
       - name: Build Desktop
         run: pnpm --filter desktop build
-
-      - name: Rebuild native modules for Electron
-        run: pnpm --filter desktop exec npx --yes electron-builder install-app-deps
 
       - name: Verify staged production API
         shell: pwsh
@@ -159,15 +87,6 @@ jobs:
           }
           Write-Host "[OK] better-sqlite3 lib exists"
 
-          $bindings = Join-Path $nodeModules "better-sqlite3\build\Release"
-          if (-not (Test-Path $bindings)) {
-            $bindings = Join-Path $nodeModules "better-sqlite3\prebuilds"
-          }
-          if (-not (Test-Path $bindings)) {
-            throw "MISSING: better-sqlite3 native bindings not found"
-          }
-          Write-Host "[OK] better-sqlite3 native bindings exist"
-
           Write-Host ""
           Write-Host "Checking for external junctions in deployed node_modules..."
           $externalLinks = Get-ChildItem $nodeModules -Recurse -Depth 3 -ErrorAction SilentlyContinue |
@@ -192,6 +111,8 @@ jobs:
           Write-Host "=== Staged API Verification PASSED ==="
 
       - name: Electron Builder
+        env:
+          GYP_MSVS_VERSION: "2022"
         run: pnpm --filter desktop dist --win nsis --x64
         timeout-minutes: 90
 
@@ -216,7 +137,7 @@ jobs:
           Write-Host ""
           Write-Host "=== Loading better-sqlite3 with Electron ==="
           $testScriptPath = Join-Path $apiBase "test_bs3_electron.js"
-          $jsCode = "const Database = require('./node_modules/better-sqlite3/lib/index.js'); console.log('Node ABI:', process.versions.modules); console.log('Electron version:', process.versions.electron); console.log('Node version:', process.versions.node); const db = new Database(':memory:'); console.log('In-memory DB opened OK'); const r = db.prepare('SELECT 1 as v').get(); console.log('Query result:', JSON.stringify(r)); db.close(); console.log('SQLite PASS');"
+          $jsCode = "const assert = require('node:assert/strict'); assert.equal(process.versions.electron, '33.4.11'); assert.equal(process.versions.modules, '130'); assert.equal(process.platform, 'win32'); assert.equal(process.arch, 'x64'); assert.equal(require('./node_modules/better-sqlite3/package.json').version, '12.11.1'); const Database = require('./node_modules/better-sqlite3/lib/index.js'); console.log('Node ABI:', process.versions.modules); console.log('Electron version:', process.versions.electron); console.log('Node version:', process.versions.node); const db = new Database(':memory:'); console.log('In-memory DB opened OK'); const r = db.prepare('SELECT 1 as v').get(); console.log('Query result:', JSON.stringify(r)); db.close(); console.log('SQLite PASS');"
           Set-Content -Path $testScriptPath -Value $jsCode -Encoding UTF8
 
           $psi = New-Object System.Diagnostics.ProcessStartInfo
